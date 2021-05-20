@@ -23,6 +23,7 @@ HEATMAP_STYLE = MappingProxyType(
         "cmap": sns.color_palette("coolwarm", n_colors=100, desat=0.6),
         "linewidths": 0.1,
         "linecolor": "k",
+        "annot_kws": MappingProxyType({"fontsize": 8})
     }
 )
 
@@ -75,8 +76,7 @@ def figsize_like(data: pd.DataFrame, scale: float = 0.85) -> np.ndarray:
     Returns:
         [np.ndarray]: array([width, height]).
     """
-    figsize = (np.array(data.shape)[::-1] * scale).round()
-    return figsize.astype(np.int64)
+    return (np.array(data.shape)[::-1] * scale)
 
 
 def add_tukey_marks(
@@ -152,7 +152,7 @@ def _(ax: np.ndarray, deg: float, axis: str = "x"):
 
 
 def pair_corr_heatmap(
-    data, ignore=None, annot=True, high_corr=None, scale=0.85, ax=None, **kwargs
+    data, ignore=None, annot=True, high_corr=None, scale=0.5, ax=None, **kwargs
 ):
     if not ignore:
         ignore = []
@@ -358,7 +358,7 @@ def heated_barplot(
     data: pd.Series,
     heat: str = "coolwarm",
     heat_desat: float = 0.6,
-    scale: int = 0.85,
+    figsize: tuple = (6, 8),
     ax: plt.Axes = None,
     **kwargs,
 ) -> plt.Axes:
@@ -382,8 +382,6 @@ def heated_barplot(
     pal_vals = np.around(minmax_scale(data, feature_range=(-100, 100))).astype(np.int64)
     palette = heat.loc[pal_vals]
     if ax is None:
-        figsize = np.repeat(figsize_like(data, scale=scale), 2)
-        figsize[0] = figsize[0] // 1.5
         fig, ax = plt.subplots(figsize=figsize)
     ax = sns.barplot(
         x=data.values, y=data.index, palette=palette, orient="h", ax=ax, **kwargs
@@ -693,12 +691,12 @@ def cat_regressor_lineplots(
     return fig
 
 
-def frame_corr_heatmap(
+def cat_corr_heatmap(
     data: pd.DataFrame,
     categorical: str,
     transpose:bool=False,
     high_corr:float=None,
-    scale: float = 0.85,
+    scale: float = 0.5,
     no_prefix: bool = True,
     ax: plt.Axes = None,
     **kwargs,
@@ -709,7 +707,7 @@ def frame_corr_heatmap(
         data (pd.DataFrame): Frame containing categorical and numeric data.
         categorical (str): Name or list of names of categorical features.
         high_corr (float): Threshold for high correlation. Defaults to None.
-        scale (float, optional): Multiplier for determining figsize. Defaults to 0.85.
+        scale (float, optional): Multiplier for determining figsize. Defaults to 0.5.
         no_prefix (bool, optional): If only one cat, do not prefix dummies. Defaults to True.
         ax (plt.Axes, optional): Axes to plot on. Defaults to None.
 
