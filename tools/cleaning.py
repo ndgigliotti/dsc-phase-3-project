@@ -57,6 +57,11 @@ def coerce_list_likes(data):
     clean = clean.map(list, na_action="ignore")
     return clean
 
+def token_info(data, normalize=False):
+    funcs = ["min", "max", "count"]
+    df = data.apply(lambda x: x.value_counts(normalize=normalize).agg(funcs))
+    df.rename({"count": "types", "min": "min_tokens", "max": "max_tokens"}, inplace=True)
+    return df.T
 
 def info(data: pd.DataFrame, round_pct: int = 2) -> pd.DataFrame:
     """Get counts of NaNs, uniques, and duplicates.
@@ -72,7 +77,7 @@ def info(data: pd.DataFrame, round_pct: int = 2) -> pd.DataFrame:
     -------
     pd.DataFrame
         [description]
-    """    
+    """
     n_rows = data.shape[0]
     nan = data.isna().sum().to_frame("nan")
     dup = pd.DataFrame(

@@ -1,4 +1,3 @@
-import re
 from functools import singledispatch
 from types import MappingProxyType
 
@@ -23,7 +22,7 @@ HEATMAP_STYLE = MappingProxyType(
         "cmap": sns.color_palette("coolwarm", n_colors=100, desat=0.6),
         "linewidths": 0.1,
         "linecolor": "k",
-        "annot_kws": MappingProxyType({"fontsize": 8})
+        "annot_kws": MappingProxyType({"fontsize": 8}),
     }
 )
 
@@ -76,7 +75,7 @@ def figsize_like(data: pd.DataFrame, scale: float = 0.85) -> np.ndarray:
     Returns:
         [np.ndarray]: array([width, height]).
     """
-    return (np.array(data.shape)[::-1] * scale)
+    return np.array(data.shape)[::-1] * scale
 
 
 def add_tukey_marks(
@@ -117,13 +116,14 @@ def add_tukey_marks(
     ax.text(lower, text_yval, "Fence", ha="center")
     return ax
 
+
 def add_quantile_marks(
     data: np.ndarray,
     quantiles: list,
     ax: plt.Axes,
     line_color: str = "k",
     line_style: str = "--",
-    percent_fmt: bool= True,
+    percent_fmt: bool = True,
 ) -> plt.Axes:
     quant_labels = quantiles
     quantiles = np.quantile(data, quant_labels)
@@ -136,6 +136,7 @@ def add_quantile_marks(
         label = f"{label}%" if percent_fmt else str(label)
         ax.text(quant, text_yval, label, ha="center")
     return ax
+
 
 @singledispatch
 def rotate_ticks(ax: plt.Axes, deg: float, axis: str = "x"):
@@ -218,6 +219,33 @@ def multi_dist(data: pd.DataFrame, ncols=3, sp_height=5, **kwargs) -> np.ndarray
             ax.set_ylabel(None)
     return axs
 
+def multi_countplot(data: pd.DataFrame, normalize=False, heat="coolwarm", heat_desat=0.6, ncols=3, sp_height=5, orient="h", sort="desc", **kwargs) -> plt.Figure:
+    nrows, figsize = calc_subplots_size(data.columns.size, ncols, sp_height)
+    fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
+    sort = sort.lower()
+    format_spec = "{x:.0%}" if normalize else "{x:,.0f}"
+    data = data.loc[:, data.nunique().sort_values(ascending=(sort=="asc")).index]
+    for ax in axs.flat:
+        ax.set_visible(False)
+    for ax, column in zip(axs.flat, data.columns):
+        ax.set_visible(True)
+        col_df = data[column].value_counts(normalize=normalize).to_frame("Count")
+        col_df.index.name = column
+        col_df.reset_index(inplace=True)
+        pal = heat_palette(col_df["Count"], heat, desat=heat_desat)
+        ax = simple_barplot(col_df, column, "Count", ax=ax, orient=orient, sort=sort, palette=pal, **kwargs)
+        ax.set_title(f"`{column}` Value Counts")
+        annot_bars(ax, orient=orient, format_spec=format_spec)
+        count_axis = ax.xaxis if orient.lower() == "h" else ax.yaxis
+        count_axis.set_major_formatter(ticker.StrMethodFormatter(format_spec))
+    if axs.ndim > 1:
+        for ax in axs[:, 1:].flat:
+            ax.set_ylabel(None)
+    elif axs.size > 1:
+        for ax in axs[1:]:
+            ax.set_ylabel(None)
+    fig.tight_layout()
+    return fig
 
 def multi_scatter(
     data: pd.DataFrame,
@@ -309,7 +337,7 @@ def annot_bars(
         color (str, optional): Text color. Defaults to "k".
         compact (bool, optional): Annotate inside the bars. Defaults to False.
         orient (str, optional): Bar orientation. Defaults to "h".
-        format_spec (str, optional): Format string for annotations. Defaults to "{x:.2f}".
+        format_spec (str, optional): Format string for annotations. Defaults to ".2f".
         fontsize (int, optional): Font size. Defaults to 12.
         alpha (float, optional): Opacity of text. Defaults to 0.5.
         drop_last (int, optional): Number of bars to ignore on tail end. Defaults to 0.
@@ -353,6 +381,13 @@ def annot_bars(
         )
     return ax
 
+def heat_palette(data, palette_name, desat=0.6):
+    heat = pd.Series(
+        sns.color_palette(palette_name, desat=desat, n_colors=201),
+        index=pd.RangeIndex(-100, 101),
+    )
+    idx = np.around(minmax_scale(data, feature_range=(-100, 100))).astype(np.int64)
+    return heat.loc[idx]
 
 def heated_barplot(
     data: pd.Series,
@@ -432,23 +467,21 @@ def cat_palette(
     return dict(zip(keys, pal))
 
 
-def derive_coeff_labels(coeff_df):
-    re_cat = r"C\(\w+\)\[T\.([\w\s]+)\]"
-    label = coeff_df.index.to_series(name="label")
-    cat_label = label.filter(regex=re_cat, axis=0)
-    label.update(cat_label.str.extract(re_cat).squeeze())
-    return coeff_df.assign(label=label)
-
-
 def simple_barplot(
-    data, x, y, sort="asc", orient="v", estimator=np.mean, scale=0.5, ax=None, **kwargs
+    data,
+    x,
+    y,
+    sort="asc",
+    orient="v",
+    estimator=np.mean,
+    figsize=None,
+    ax=None,
+    **kwargs,
 ):
     if ax is None:
-        width = data[x].nunique()
-        width *= scale
-        height = width / 2
-        figsize = (width, height) if orient == "v" else (height, width)
-        figsize = np.array(figsize).round().astype(np.int64)
+        if figsize is None:
+            width, height = (8, 5)
+            figsize = (width, height) if orient == "v" else (height, width)
         fig, ax = plt.subplots(figsize=figsize)
     if sort:
         if sort.lower() in ("asc", "desc"):
@@ -487,83 +520,6 @@ def simple_barplot(
     return ax
 
 
-# def cat_regressor_barplots(
-#     main_df,
-#     coeff_df,
-#     exog,
-#     endog,
-#     sp_height=5,
-#     plot_corr=True,
-#     palette=None,
-#     saturation=0.75,
-#     annot_kws=None,
-#     corr_kws=None,
-#     estimator=np.median,
-# ):
-#     if "label" not in coeff_df.columns:
-#         coeff_df = derive_coeff_labels(coeff_df)
-#     if plot_corr:
-#         _, figsize = calc_subplots_size(3, 3, sp_height)
-#         fig, (ax1, ax2, ax3) = plt.subplots(ncols=3, figsize=figsize)
-#     else:
-#         _, figsize = calc_subplots_size(2, 2, sp_height)
-#         fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=figsize)
-
-#     uniq_exog = main_df[exog].sort_values().unique()
-#     if not palette:
-#         palette = cat_palette(None, uniq_exog)
-#     if isinstance(palette, str):
-#         palette = cat_palette(palette, uniq_exog)
-#     coeff_df = coeff_df.filter(like=exog, axis=0)
-#     coeff_df = coeff_df.assign(label=coeff_df.label.astype(uniq_exog.dtype))
-#     coeff_df.sort_values("label", inplace=True)
-
-#     ax1 = sns.barplot(
-#         data=coeff_df,
-#         x="label",
-#         y="coeff",
-#         palette=palette,
-#         saturation=saturation,
-#         order=coeff_df.label,
-#         ax=ax1,
-#     )
-#     ax2 = sns.barplot(
-#         data=main_df,
-#         x=exog,
-#         y=endog,
-#         estimator=estimator,
-#         palette=palette,
-#         saturation=saturation,
-#         ax=ax2,
-#     )
-
-#     ax1.set_ylabel(f"Effect on {endog.title()}", labelpad=10)
-#     ax2.set_ylabel(endog.title(), labelpad=10)
-#     ax1.set_title(f"Projected Effects of {exog.title()} on {endog.title()}", pad=10)
-#     est_name = estimator.__name__.title()
-#     ax2.set_title(f"{est_name} {endog.title()} by {exog.title()}", pad=10)
-#     for ax in (ax1, ax2):
-#         ax.set_xlabel(exog.title())
-
-#     if plot_corr:
-#         if not corr_kws:
-#             corr_kws = dict()
-#         ax3 = heated_barplot(
-#             pd.get_dummies(main_df[exog]).corrwith(main_df[endog]),
-#             saturation=saturation,
-#             ax=ax3,
-#             **corr_kws,
-#         )
-#         default_annot_kws = {"color": "k", "dist": 0.2, "fontsize": 11}
-#         if annot_kws:
-#             default_annot_kws.update(annot_kws)
-#         ax3 = annot_bars(ax3, **default_annot_kws)
-#         ax3.set_title(f"Correlation: {exog.title()} and {endog.title()}")
-#         ax3.set_xlabel("Correlation", labelpad=10)
-#         ax3.set_ylabel(exog.title(), labelpad=10)
-#     fig.tight_layout()
-#     return fig
-
 def cat_line_and_corr(
     main_df,
     exog,
@@ -575,7 +531,7 @@ def cat_line_and_corr(
     palette=None,
     annot_kws=None,
     corr_kws=None,
-    estimator=np.median,
+    estimator=np.mean,
 ):
     _, figsize = calc_subplots_size(2, 2, sp_height)
     fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=figsize)
@@ -614,88 +570,12 @@ def cat_line_and_corr(
     fig.tight_layout()
     return fig
 
-def cat_regressor_lineplots(
-    main_df,
-    coeff_df,
-    exog,
-    endog,
-    sp_height=5,
-    lw=3,
-    ms=10,
-    marker="o",
-    plot_corr=True,
-    palette=None,
-    annot_kws=None,
-    corr_kws=None,
-    estimator=np.median,
-):
-    if "label" not in coeff_df.columns:
-        coeff_df = derive_coeff_labels(coeff_df)
-    if plot_corr:
-        _, figsize = calc_subplots_size(3, 3, sp_height)
-        fig, (ax1, ax2, ax3) = plt.subplots(ncols=3, figsize=figsize)
-    else:
-        _, figsize = calc_subplots_size(2, 2, sp_height)
-        fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=figsize)
-
-    coeff_df = coeff_df.filter(like=exog, axis=0)
-    coeff_df = coeff_df.assign(label=coeff_df.label.astype(main_df[exog].dtype))
-    coeff_df.sort_values("label", inplace=True)
-
-    ax1 = sns.lineplot(
-        data=coeff_df,
-        x="label",
-        y="coeff",
-        palette=palette,
-        lw=lw,
-        ms=ms,
-        marker=marker,
-        ax=ax1,
-    )
-    ax2 = sns.lineplot(
-        data=main_df,
-        x=exog,
-        y=endog,
-        estimator=estimator,
-        palette=palette,
-        lw=lw,
-        ms=ms,
-        marker=marker,
-        ax=ax2,
-    )
-
-    ax1.set_ylabel(f"Effect on {endog.title()}", labelpad=10)
-    ax2.set_ylabel(endog.title(), labelpad=10)
-    ax1.set_title(f"Average Effect of {exog.title()} on {endog.title()}", pad=10)
-    est_name = estimator.__name__.title()
-    ax2.set_title(f"{est_name} {endog.title()} by {exog.title()}", pad=10)
-    for ax in (ax1, ax2):
-        ax.set_xlabel(exog.title(), labelpad=10)
-
-    if plot_corr:
-        if not corr_kws:
-            corr_kws = dict()
-        ax3 = heated_barplot(
-            pd.get_dummies(main_df[exog]).corrwith(main_df[endog]),
-            ax=ax3,
-            **corr_kws,
-        )
-        default_annot_kws = {"color": "k", "dist": 0.2, "fontsize": 11}
-        if annot_kws:
-            default_annot_kws.update(annot_kws)
-        ax3 = annot_bars(ax3, **default_annot_kws)
-        ax3.set_title(f"Correlation: {exog.title()} and {endog.title()}")
-        ax3.set_xlabel("Correlation", labelpad=10)
-        ax3.set_ylabel(exog.title(), labelpad=10)
-    fig.tight_layout()
-    return fig
-
 
 def cat_corr_heatmap(
     data: pd.DataFrame,
     categorical: str,
-    transpose:bool=False,
-    high_corr:float=None,
+    transpose: bool = False,
+    high_corr: float = None,
     scale: float = 0.5,
     no_prefix: bool = True,
     ax: plt.Axes = None,
@@ -748,3 +628,36 @@ def cat_corr_heatmap(
     ax.set_ylabel(ylabel, labelpad=10)
     ax.set_title(title, pad=10)
     return ax
+
+
+# @wraps(sns.barplot)
+# def barplot(
+#     x=None,
+#     y=None,
+#     hue=None,
+#     data=None,
+#     sort="asc"
+#     order=None,
+#     hue_order=None,
+#     estimator=np.mean,
+#     ci=95,
+#     n_boot=1000,
+#     units=None,
+#     seed=None,
+#     orient=None,
+#     color=None,
+#     palette=None,
+#     saturation=0.75,
+#     errcolor=".26",
+#     errwidth=None,
+#     capsize=None,
+#     dodge=True,
+#     ax=None,
+#     **kwargs,
+# ):
+#     if order is None:
+#         order = data.groupby(x)[y].agg(estimator).sort_values().index[::-1]
+#     params = locals()
+#     params.update(kwargs)
+#     del params["kwargs"]
+#     return sns.barplot(**params)
