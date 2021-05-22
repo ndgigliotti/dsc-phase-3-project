@@ -27,6 +27,7 @@ def _display_report(outliers: pd.DataFrame, verb: str) -> None:
 @_display_report.register
 def _(outliers: pd.Series, verb: str) -> None:
     """Process Series"""
+    # simply convert Series to DataFrame
     _display_report(outliers.to_frame(), verb)
 
 
