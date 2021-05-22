@@ -103,7 +103,7 @@ def add_tukey_marks(
     q3 = data.quantile(0.75)
     ax.axvspan(q1, q3, color=iqr_color, alpha=0.2)
     iqr_mp = q1 + ((q3 - q1) / 2)
-    lower, upper = outliers.iqr_fences(data)
+    lower, upper = outliers.tukey_fences(data)
     ax.axvline(lower, c=fence_color, ls=fence_style)
     ax.axvline(upper, c=fence_color, ls=fence_style)
     text_yval = ax.get_ylim()[1]
