@@ -1,81 +1,124 @@
-import re
-import json
-import unidecode
 from IPython.display import display, HTML
-from string import punctuation
 import pandas as pd
 import numpy as np
 
-RE_PUNCT = re.compile(f"[{re.escape(punctuation)}]")
-RE_WHITESPACE = re.compile(r"\s+")
 
-
-def nan_info(data: pd.DataFrame):
-    df = data.isna().sum().to_frame("Total")
-    df["Percent"] = (df["Total"] / data.shape[0]) * 100
-    return df.sort_values("Total", ascending=False)
-
-
-def dup_info(data: pd.DataFrame):
-    df = data.duplicated().sum().to_frame("Total")
-    df["Percent"] = (df["Total"] / data.shape[0]) * 100
-    return df.sort_values("Total", ascending=False)
-
-
-def nan_rows(data: pd.DataFrame):
-    return data[data.isna().any(axis=1)]
-
-
-def dup_rows(data: pd.DataFrame, **kwargs):
-    return data[data.duplicated(**kwargs)]
-
-
-def who_is_nan(data: pd.DataFrame, col: str, name_col: str):
-    return nan_rows(data)[data[col].isna()][name_col]
-
-
-def process_strings(strings: pd.Series) -> pd.Series:
-    df = strings.str.lower()
-    df = df.str.replace(RE_PUNCT, "").str.replace(RE_WHITESPACE, " ")
-    df = df.map(unidecode.unidecode, na_action="ignore")
-    return df
-
-
-def detect_json_list(x):
-    return isinstance(x, str) and bool(re.fullmatch(r"\[.*\]", x))
-
-
-def coerce_list_likes(data):
-    if not isinstance(data, pd.Series):
-        raise TypeError("`data` must be pd.Series")
-    json_strs = data.map(detect_json_list, na_action="ignore")
-    clean = data.copy()
-    clean[json_strs] = clean.loc[json_strs].map(json.loads)
-    list_like = clean.map(pd.api.types.is_list_like)
-    clean[~list_like] = clean.loc[~list_like].map(lambda x: [x], na_action="ignore")
-    clean = clean.map(list, na_action="ignore")
-    return clean
-
-def token_info(data, normalize=False):
-    funcs = ["min", "max", "count"]
-    df = data.apply(lambda x: x.value_counts(normalize=normalize).agg(funcs))
-    df.rename({"count": "types", "min": "min_tokens", "max": "max_tokens"}, inplace=True)
-    return df.T.sort_values("min_tokens")
-
-def info(data: pd.DataFrame, round_pct: int = 2) -> pd.DataFrame:
-    """Get counts of NaNs, uniques, and duplicates.
+def nan_rows(data: pd.DataFrame, total: bool = False) -> pd.DataFrame:
+    """Get rows with missing values.
 
     Parameters
     ----------
-    data : pd.DataFrame
-        [description]
-    round_pct : int, optional
-        [description], by default 2
+    data : DataFrame
+        Data for getting rows with missing values.
+    total : bool, optional
+        Only get rows which are totally null, defaults to False.
+    Returns
+    -------
+    DataFrame
+        Table of rows with missing values.
+    """
+    if total:
+        nan_mask = data.isna().all(axis=1)
+    else:
+        nan_mask = data.isna().any(axis=1)
+    return data.loc[nan_mask].copy()
+
+
+def dup_rows(data: pd.DataFrame, **kwargs) -> pd.DataFrame:
+    """Get duplicate rows.
+
+    Parameters
+    ----------
+    data : DataFrame
+        Data for getting duplicate rows.
+    **kwargs : dict, optional
+        Extra arguments to `DataFrame.duplicated`. Refer to Pandas
+        documentation for all possible arguments.
+    Returns
+    -------
+    DataFrame
+        Table of duplicate rows.
+    """
+    return data.loc[data.duplicated(**kwargs)].copy()
+
+
+def who_is_nan(
+    data: pd.DataFrame, column: str = None, index: str = None, total: bool = False
+) -> np.ndarray:
+    """Get indices of rows with missing values.
+
+    Parameters
+    ----------
+    data : DataFrame
+        DataFrame for looking up missing values.
+    column : str, optional
+        Column for looking up missing values. Uses all columns if not provided.
+    index : str, optional
+        Column to use as index. Defaults to index of `data` if None.
+    total : bool, optional
+        Only look up rows which are totally null, defaults to False.
+        Irrelevant if `column` is specified.
 
     Returns
     -------
-    pd.DataFrame
-        [description]
+    ndarray
+        Indices of rows with missing values.
+    """
+    if index is not None:
+        data = data.set_index(index)
+    if column is None:
+        if total:
+            nan_mask = data.isna().all(axis=1)
+        else:
+            nan_mask = data.isna().any(axis=1)
+    else:
+        nan_mask = data[column].isna()
+    return data.loc[nan_mask].index.to_numpy()
+
+
+def token_info(data: pd.DataFrame, normalize: bool = False) -> pd.DataFrame:
+    """Get info about min tokens, max tokens, and number of types.
+
+    Categorical features often have a small number of unique value-types
+    and a larger number of tokens (instances) of those types. Sometimes
+    the distribution of types is imbalanced, meaning that some have many
+    more tokens than others. This function returns the minimum token
+    count, maximum token count, and number of types to indicate the balance.
+
+    Parameters
+    ----------
+    data : DataFrame
+        DataFrame for getting token and type counts.
+    normalize : bool, optional
+        Return relative token frequencies instead of counts, by default False.
+
+    Returns
+    -------
+    DataFrame
+        Token and type information.
+    """
+    funcs = ["min", "max", "count"]
+    df = data.apply(lambda x: x.value_counts(normalize).agg(funcs))
+    df.rename(
+        {"count": "types", "min": "min_tokens", "max": "max_tokens"}, inplace=True
+    )
+    return df.T.sort_values("min_tokens")
+
+
+def info(data: pd.DataFrame, round_pct: int = 2) -> pd.DataFrame:
+    """Get counts of NaNs, uniques, and duplicate observations.
+
+    Parameters
+    ----------
+    data : DataFrame
+        DataFrame for getting information.
+    round_pct : int, optional
+        Decimals for rounding percentages, by default 2.
+
+    Returns
+    -------
+    DataFrame
+        Table of information.
     """
     n_rows = data.shape[0]
     nan = data.isna().sum().to_frame("nan")
@@ -111,5 +154,6 @@ def show_uniques(data: pd.DataFrame, cut: int = 10, columns: list = None) -> Non
     elif cut:
         data = data.loc[:, data.nunique() <= cut]
     cols = [pd.Series(y.dropna().unique(), name=x) for x, y in data.iteritems()]
-    table = pd.concat(cols, axis=1).to_html(index=False, na_rep="", notebook=True)
-    display(HTML(table))
+    table = pd.concat(cols, axis=1)
+    table = HTML(table.to_html(index=False, na_rep="", notebook=True))
+    display(table)
