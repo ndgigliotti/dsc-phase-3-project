@@ -1,6 +1,5 @@
 import datetime
 from time import perf_counter
-from collections.abc import Mapping
 import numpy as np
 import pandas as pd
 
@@ -12,52 +11,103 @@ DATETIME_FORMAT = "%Y-%m-%dT%H-%M-%S"
 def numeric_cols(data: pd.DataFrame) -> list:
     """Returns a list of all numeric column names.
 
-    Args:
-        data (pd.DataFrame): DataFrame to get column names from.
+    Parameters
+    ----------
+    data : DataFrame
+        DataFrame to get column names from.
 
-    Returns:
-        list: All numeric column names.
+    Returns
+    -------
+    list
+        All and only the numeric column names.
     """
-    numeric = data.dtypes.map(pd.api.types.is_numeric_dtype)
-    return data.columns[numeric].to_list()
+    return data.select_dtypes("number").columns.to_list()
+
+
+def cat_cols(data: pd.DataFrame, min_cats: int = None, max_cats: int = None) -> list:
+    """Returns a list of categorical column names.
+
+    Parameters
+    ----------
+    data : DataFrame
+        DataFrame to get column names from.
+    min_cats : int, optional
+        Minimum number of categories, by default None.
+    max_cats : int, optional
+        Maximum number of categories, by default None.
+
+    Returns
+    -------
+    list
+        Categorical column names.
+    """
+    cats = data.select_dtypes("category")
+    cat_counts = cats.nunique()
+    if min_cats is None:
+        min_cats = cat_counts.min()
+    if max_cats is None:
+        max_cats = cat_counts.max()
+    keep = (min_cats <= cat_counts) & (cat_counts <= max_cats)
+    return cats.columns[keep].to_list()
 
 
 def noncat_cols(data: pd.DataFrame) -> list:
-    categorical = data.dtypes.map(pd.api.types.is_categorical_dtype)
-    return data.columns[~categorical].to_list()
+    """Returns a list of all non-categorical column names.
+
+    Parameters
+    ----------
+    data : DataFrame
+        DataFrame to get column names from.
+
+    Returns
+    -------
+    list
+        All and only the non-categorical column names.
+    """
+    return data.columns.drop(cat_cols(data)).to_list()
 
 
-def cat_cols(data: pd.DataFrame) -> list:
-    categorical = data.dtypes.map(pd.api.types.is_categorical_dtype)
-    return data.columns[categorical].to_list()
+def binary_cols(data: pd.DataFrame) -> list:
+    """Returns a list of columns with exactly 2 unique values.
+
+    Parameters
+    ----------
+    data : DataFrame
+        DataFrame to get column names from.
+
+    Returns
+    -------
+    list
+        All and only the binary column names.
+    """
+    return data.columns[data.nunique() == 2].to_list()
+
+# def transform(data: pd.DataFrame, pipe: list):
+#     tr = data.to_numpy()
+#     for func in pipe:
+#         tr = func(tr)
+#     display([x.__name__ for x in pipe])
+#     return pd.DataFrame(tr, index=data.index, columns=data.columns)
 
 
-def transform(data: pd.DataFrame, pipe: list):
-    tr = data.to_numpy()
-    for func in pipe:
-        tr = func(tr)
-    display([x.__name__ for x in pipe])
-    return pd.DataFrame(tr, index=data.index, columns=data.columns)
-
-
-def filter_pipe(
-    data: pd.DataFrame, like: list = None, regex: list = None, axis: int = None
-) -> pd.DataFrame:
-    if like and regex:
-        raise ValueError("Cannot pass both `like` and `regex`")
-    elif like:
-        if isinstance(like, str):
-            like = [like]
-        for exp in like:
-            data = data.filter(like=exp, axis=axis)
-    elif regex:
-        if isinstance(regex, str):
-            regex = [regex]
-        for exp in like:
-            data = data.filter(regex=exp, axis=axis)
-    else:
-        raise ValueError("Must pass either `like` or `regex` but not both")
-    return data
+# def filter_pipe(
+#     data: pd.DataFrame, like: list = None, regex: list = None, axis: int = None
+# ) -> pd.DataFrame:
+#     if like and regex:
+#         raise ValueError("Cannot pass both `like` and `regex`")
+#     elif like:
+#         if isinstance(like, str):
+#             like = [like]
+#         for exp in like:
+#             data = data.filter(like=exp, axis=axis)
+#     elif regex:
+#         if isinstance(regex, str):
+#             regex = [regex]
+#         for exp in like:
+#             data = data.filter(regex=exp, axis=axis)
+#     else:
+#         raise ValueError("Must pass either `like` or `regex` but not both")
+#     return data
 
 
 def get_groups(groupby: pd.core.groupby.DataFrameGroupBy):
@@ -67,11 +117,15 @@ def get_groups(groupby: pd.core.groupby.DataFrameGroupBy):
 def elapsed(start_time):
     return datetime.timedelta(seconds=perf_counter() - start_time)
 
+
 def to_title(pylabel):
     return pylabel.replace("_", " ").strip().title()
 
+
 def cartesian(*xi):
     return np.array(np.meshgrid(*xi)).T.reshape(-1, len(xi))
+
+
 # def map_list_likes(data: pd.Series, mapper: dict):
 #     """Apply `mapper` to elements of elements of `data`.
 

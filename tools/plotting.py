@@ -22,7 +22,7 @@ HEATMAP_STYLE = MappingProxyType(
         "cmap": sns.color_palette("coolwarm", n_colors=100, desat=0.6),
         "linewidths": 0.1,
         "linecolor": "k",
-        "annot_kws": MappingProxyType({"fontsize": 8}),
+        "annot_kws": MappingProxyType({"fontsize": 10}),
     }
 )
 
@@ -185,18 +185,24 @@ def pair_corr_heatmap(
 def calc_subplots_size(nplots: int, ncols: int, sp_height: int) -> tuple:
     """Calculate number of rows and figsize for subplots.
 
-    Args:
-        nplots (int): Number of subplots.
-        ncols (int): Number of columns in figure.
-        sp_height (int): Height of each subplot.
+    Parameters
+    ----------
+    nplots : int
+        Number of subplots.
+    ncols : int
+        Number of columns in figure.
+    sp_height : int
+        Height of each subplot.
 
-    Returns:
-        [tuple]: Tuple containing:
-                nrows (int): Number of rows in figure.
-                figsize (tuple): (width, height)
+    Returns
+    -------
+    nrows: int
+        Number of rows in figure.
+    figsize: tuple
+        Width and height of figure.
 
     """
-    nrows = round(nplots / ncols)
+    nrows = int(np.ceil(nplots / ncols))
     figsize = (ncols * sp_height, nrows * sp_height)
     return nrows, figsize
 

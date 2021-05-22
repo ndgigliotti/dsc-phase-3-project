@@ -5,7 +5,6 @@ from IPython.display import display, HTML
 from string import punctuation
 import pandas as pd
 import numpy as np
-import tools.utils as utils
 
 RE_PUNCT = re.compile(f"[{re.escape(punctuation)}]")
 RE_WHITESPACE = re.compile(r"\s+")
@@ -61,7 +60,7 @@ def token_info(data, normalize=False):
     funcs = ["min", "max", "count"]
     df = data.apply(lambda x: x.value_counts(normalize=normalize).agg(funcs))
     df.rename({"count": "types", "min": "min_tokens", "max": "max_tokens"}, inplace=True)
-    return df.T
+    return df.T.sort_values("min_tokens")
 
 def info(data: pd.DataFrame, round_pct: int = 2) -> pd.DataFrame:
     """Get counts of NaNs, uniques, and duplicates.
