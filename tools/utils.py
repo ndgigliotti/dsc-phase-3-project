@@ -51,6 +51,23 @@ def cat_cols(data: pd.DataFrame, min_cats: int = None, max_cats: int = None) -> 
     return cats.columns[keep].to_list()
 
 
+def multicat_cols(data: pd.DataFrame) -> list:
+    """Returns column names of categoricals with 3+ categories.
+
+    Parameters
+    ----------
+    data : DataFrame
+        DataFrame to get column names from.
+
+    Returns
+    -------
+    list
+        Categorical (3+) column names.
+    """
+    cats = data.select_dtypes("category")
+    return cats.columns[3 <= cats.nunique()].to_list()
+
+
 def noncat_cols(data: pd.DataFrame) -> list:
     """Returns a list of all non-categorical column names.
 
@@ -81,6 +98,7 @@ def binary_cols(data: pd.DataFrame) -> list:
         All and only the binary column names.
     """
     return data.columns[data.nunique() == 2].to_list()
+
 
 # def transform(data: pd.DataFrame, pipe: list):
 #     tr = data.to_numpy()
