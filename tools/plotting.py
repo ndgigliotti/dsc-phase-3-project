@@ -81,10 +81,11 @@ def figsize_like(data: pd.DataFrame, scale: float = 0.85) -> np.ndarray:
 def add_tukey_marks(
     data: pd.Series,
     ax: plt.Axes,
+    annot: bool=True,
     iqr_color: str = "r",
     fence_color: str = "k",
     fence_style: str = "--",
-    show_quarts: bool = False,
+    annot_quarts: bool = False,
 ) -> plt.Axes:
     """Add IQR box and fences to a histogram-like plot.
 
@@ -94,7 +95,7 @@ def add_tukey_marks(
         iqr_color (str, optional): Color of shaded IQR box. Defaults to "r".
         fence_color (str, optional): Fence line color. Defaults to "k".
         fence_style (str, optional): Fence line style. Defaults to "--".
-        show_quarts (bool, optional): Annotate Q1 and Q3. Defaults to False.
+        annot_quarts (bool, optional): Annotate Q1 and Q3. Defaults to False.
 
     Returns:
         plt.Axes: Annotated Axes object.
@@ -108,12 +109,13 @@ def add_tukey_marks(
     ax.axvline(upper, c=fence_color, ls=fence_style)
     text_yval = ax.get_ylim()[1]
     text_yval *= 1.01
-    ax.text(iqr_mp, text_yval, "IQR", ha="center")
-    if show_quarts:
-        ax.text(q1, text_yval, "Q1", ha="center")
-        ax.text(q3, text_yval, "Q3", ha="center")
-    ax.text(upper, text_yval, "Fence", ha="center")
-    ax.text(lower, text_yval, "Fence", ha="center")
+    if annot:
+        ax.text(iqr_mp, text_yval, "IQR", ha="center")
+        if annot_quarts:
+            ax.text(q1, text_yval, "Q1", ha="center")
+            ax.text(q3, text_yval, "Q3", ha="center")
+        ax.text(upper, text_yval, "Fence", ha="center")
+        ax.text(lower, text_yval, "Fence", ha="center")
     return ax
 
 
@@ -207,7 +209,7 @@ def calc_subplots_size(nplots: int, ncols: int, sp_height: int) -> tuple:
     return nrows, figsize
 
 
-def multi_dist(data: pd.DataFrame, ncols=3, sp_height=5, **kwargs) -> np.ndarray:
+def multi_dist(data: pd.DataFrame, tukey_marks=False, ncols=3, sp_height=5, **kwargs) -> np.ndarray:
     data = data.loc[:, utils.numeric_cols(data)]
     nrows, figsize = calc_subplots_size(data.columns.size, ncols, sp_height)
     fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
@@ -216,6 +218,8 @@ def multi_dist(data: pd.DataFrame, ncols=3, sp_height=5, **kwargs) -> np.ndarray
     for ax, column in zip(axs.flat, data.columns):
         ax.set_visible(True)
         ax = sns.histplot(data=data, x=column, ax=ax, **kwargs)
+        if tukey_marks:
+            add_tukey_marks(data[column], ax, annot=False)
         ax.set_title(f"Distribution of `{column}`")
     if axs.ndim > 1:
         for ax in axs[:, 1:].flat:

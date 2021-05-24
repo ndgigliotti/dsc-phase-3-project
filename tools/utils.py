@@ -23,6 +23,21 @@ def numeric_cols(data: pd.DataFrame) -> list:
     """
     return data.select_dtypes("number").columns.to_list()
 
+def true_numeric_cols(data: pd.DataFrame, min_unique=3) -> list:
+    """Returns numeric columns with at least `min_unique` unique values.
+
+    Parameters
+    ----------
+    data : DataFrame
+        DataFrame to get column names from.
+
+    Returns
+    -------
+    list
+        Numeric column names.
+    """
+    num = data.select_dtypes("number")
+    return num.columns[min_unique <= num.nunique()].to_list()
 
 def cat_cols(data: pd.DataFrame, min_cats: int = None, max_cats: int = None) -> list:
     """Returns a list of categorical column names.
