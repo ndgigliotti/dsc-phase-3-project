@@ -23,6 +23,7 @@ def numeric_cols(data: pd.DataFrame) -> list:
     """
     return data.select_dtypes("number").columns.to_list()
 
+
 def true_numeric_cols(data: pd.DataFrame, min_unique=3) -> list:
     """Returns numeric columns with at least `min_unique` unique values.
 
@@ -38,6 +39,7 @@ def true_numeric_cols(data: pd.DataFrame, min_unique=3) -> list:
     """
     num = data.select_dtypes("number")
     return num.columns[min_unique <= num.nunique()].to_list()
+
 
 def cat_cols(data: pd.DataFrame, min_cats: int = None, max_cats: int = None) -> list:
     """Returns a list of categorical column names.
@@ -157,6 +159,13 @@ def to_title(pylabel):
 
 def cartesian(*xi):
     return np.array(np.meshgrid(*xi)).T.reshape(-1, len(xi))
+
+
+def broad_corr(frame: pd.DataFrame, other: pd.DataFrame):
+    return other.apply(lambda x: frame.corrwith(x))
+
+
+
 
 
 # def map_list_likes(data: pd.Series, mapper: dict):
