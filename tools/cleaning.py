@@ -157,3 +157,37 @@ def show_uniques(data: pd.DataFrame, cut: int = 10, columns: list = None) -> Non
     table = pd.concat(cols, axis=1)
     table = HTML(table.to_html(index=False, na_rep="", notebook=True))
     display(table)
+
+
+def impute(data: pd.DataFrame, strategy="mode") -> pd.DataFrame:
+    """Impute missing values according to `strategy`.
+
+    Parameters
+    ----------
+    data : DataFrame
+        Data for imputation.
+    strategy : str, optional
+        Method for calculating fill values, by default "mode".
+
+    Returns
+    -------
+    DataFrame
+        Data with
+
+    Raises
+    ------
+    ValueError
+        Could not fill values in some columns using `strategy`.
+    """
+    if strategy == "mode":
+        filler = data.mode().loc[0]
+    elif strategy == "mean":
+        filler = data.mean()
+    elif strategy == "median":
+        filler = data.median()
+    data = data.fillna(filler)
+    has_na = data.isna().any(axis=0)
+    if has_na.any():
+        failed = has_na[has_na].index.to_list()
+        raise ValueError(f"Could not fill values in {failed} with {strategy}")
+    return data

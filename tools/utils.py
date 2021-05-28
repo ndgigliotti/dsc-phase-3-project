@@ -164,7 +164,8 @@ def cartesian(*xi):
 def broad_corr(frame: pd.DataFrame, other: pd.DataFrame):
     return other.apply(lambda x: frame.corrwith(x))
 
-
+def swap_index(data: pd.Series):
+    return pd.Series(data.index, index=data.values, name=data.name, copy=True)
 
 
 

@@ -4,57 +4,69 @@ from scipy.spatial import distance
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.utils.validation import check_is_fitted
 from sklearn.preprocessing import minmax_scale
-from ..utils import broad_corr
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.impute import SimpleImputer
+from ..utils import binary_cols
 
 
-# class NullTrimmer(TransformerMixin, BaseEstimator):
-#     def __init__(self, *, trim_features=True, feature_thresh=0.5, copy=True):
-#         self.trim_features = trim_features
+# class NullDropper(TransformerMixin, BaseEstimator):
+#     def __init__(self, *, drop_features=False, feature_thresh=0.5):
+#         self.drop_features = drop_features
 #         self.feature_thresh = feature_thresh
-#         self.copy = copy
 
 #     def fit(self, X, y=None):
-#         self.missing_mask_ = np.isnan(X)
+#         if isinstance(X, pd.DataFrame):
+#             self._df_columns = X.columns
+#             self._df_index = X.index
+#             self._orig_df = True
+#         self.missing_mask_ = pd.DataFrame(X).isna().to_numpy()
 #         return self
 
 #     @property
-#     def incomplete_rows(self):
+#     def null_observations_(self):
 #         check_is_fitted(self)
-#         return self.missing_mask_.any(axis=1)
+#         return self.missing_mask_[:, ~self.null_features_].any(axis=1)
 
-#     def transform(self, X, copy=None):
+#     @property
+#     def null_features_(self):
 #         check_is_fitted(self)
+#         return self.missing_mask_.mean(axis=0) > self.feature_thresh
 
-#         copy = copy if copy is not None else self.copy
-#         if copy:
-#             X = X.copy()
-
-#         self.trimmed_rows_ = X[self.incomplete_rows]
-#         return X[~self.incomplete_rows]
-
-#     def inverse_transform(self, X, copy=None):
+#     def transform(self, X):
 #         check_is_fitted(self)
-#         copy = copy if copy is not None else self.copy
-#         if copy:
-#             X = X.copy()
-#         X[self.incomplete_rows_] = self.trimmed_rows_
-#         return X
+#         X = np.asarray(X)
+#         self.dropped_observations_ = X[self.null_observations_]
+#         self.dropped_features_ = X[:, self.null_features_]
+#         return X[~self.null_observations_][:, ~self.null_features_].copy()
 
+#     def inverse_transform(self, X):
+#         check_is_fitted(self)
+#         shape = self.missing_mask_.shape[0], X.shape[1]
+#         reconst = np.zeros(shape, dtype=X.dtype)
+#         reconst[self.null_observations_] = self.dropped_observations_[:, ~self.null_features_]
+#         reconst[~self.null_observations_] = X
+#         indices = np.arange(0, self.null_features_.size)[self.null_features_]
+#         for i, feat in zip(indices, self.dropped_features_.T):
+#             reconst = np.insert(reconst, i, feat, axis=1)
+#         return reconst
 
 def infer_feature_names(
-    X_array: np.ndarray, X_frame: pd.DataFrame, dummies: bool = False
+    X_array: np.ndarray,
+    X_frame: pd.DataFrame,
+    dummies: bool = False,
+    dummy_kws: dict = None,
+    metric: str = "euclidean",
 ) -> pd.DataFrame:
-    """EXPERIMENTAL: Infer feature names for `X_array` from `X_frame`.
+    """Infer feature names for `X_array` from `X_frame`.
 
     When preprocessing data using Pandas and Scikit-Learn Pipelines, the
     feature names are easily lost. This function infers feature names
-    using correlations with the unprocessed DataFrame.
+    from the nearest feature in the upstream DataFrame.
 
     It assumes that the ndarray and DataFrame have the same shape (after
-    optional one-hot encoding), that their rows (not columns) are aligned,
-    that only linear transformations have been applied, and that there
-    are no extremely high correlations between features. This function may fail
-    if any transformation profoundly affecting correlation has been applied.
+    optional one-hot encoding), and that their rows (not columns) are aligned.
+    Both structures are min-max scaled to [0, 1] and have missing values filled
+    with 0 before distances are calculated.
 
     Parameters
     ----------
@@ -63,7 +75,17 @@ def infer_feature_names(
     X_frame : DataFrame
         Upstream DataFrame from which `X_array` was derived.
     dummies : bool, optional
-        One-hot encode categoricals in `X_frame`, by default False.
+        Use pandas.get_dummies to encode categoricals, by default False.
+    dummy_kws: dict, optional
+        Keyword arguments for pandas.get_dummies, by default None.
+    metric: str or callable, optional
+        Distance metric to use, by default 'euclidean'. If a string,
+        distance function can be 'braycurtis', 'canberra', 'chebyshev',
+        'cityblock', 'correlation', 'cosine', 'dice', 'euclidean', 'hamming',
+        'jaccard', 'jensenshannon', 'kulsinski', 'mahalanobis', 'matching',
+        'minkowski', 'rogerstanimoto', 'russellrao', 'seuclidean', 'sokalmichener',
+        'sokalsneath', 'sqeuclidean', 'wminkowski', 'yule'. For more details,
+        see the documentation for scipy.spatial.distance.cdist.
 
     Returns
     -------
@@ -76,56 +98,21 @@ def infer_feature_names(
         `X_array` and `X_frame` must have the same shape.
     """
     if dummies:
-        X_frame = pd.get_dummies(X_frame)
+        if dummy_kws is None:
+            dummy_kws = dict()
+        X_frame = pd.get_dummies(X_frame, **dummy_kws)
     if X_array.shape != X_frame.shape:
         raise ValueError(
             f"`X_array` and `X_frame` must have same shape. got {X_array.shape} and {X_frame.shape}"
         )
-    result = pd.DataFrame(X_array, index=X_frame.index)
-    column_map = broad_corr(result, X_frame).idxmax()
-    column_map = pd.Series(column_map.index, index=column_map.values)
-    result.columns = result.columns.map(column_map)
-    return result
+    downstream = pd.DataFrame(X_array).transform(minmax_scale).fillna(0.0)
+    upstream = X_frame.transform(minmax_scale).fillna(0.0)
+    dist_matrix = distance.cdist(upstream.values.T, downstream.values.T, metric=metric).T
+    features = pd.DataFrame(dist_matrix, columns=X_frame.columns).idxmin()
+    features = features.sort_values().index
+    return pd.DataFrame(X_array, columns=features, index=X_frame.index)
 
-def infer_feature_names2(
-    X_array: np.ndarray, X_frame: pd.DataFrame, dummies: bool = False, metric="hamming") -> pd.DataFrame:
-    """EXPERIMENTAL: Infer feature names for `X_array` from `X_frame`.
-
-    When preprocessing data using Pandas and Scikit-Learn Pipelines, the
-    feature names are easily lost. This function infers feature names
-    using hamming distances (proportion of disagreeing components) with
-    the upstream DataFrame.
-
-    It assumes that the ndarray and DataFrame have the same shape (after
-    optional one-hot encoding), that their rows (not columns) are aligned,
-    that only linear transformations have been applied.
-
-    Parameters
-    ----------
-    X_array : ndarray
-        Array with unknown feature names.
-    X_frame : DataFrame
-        Upstream DataFrame from which `X_array` was derived.
-    dummies : bool, optional
-        One-hot encode categoricals in `X_frame`, by default False.
-
-    Returns
-    -------
-    DataFrame
-        `X_array` with labeled features.
-
-    Raises
-    ------
-    ValueError
-        `X_array` and `X_frame` must have the same shape.
-    """
-    if dummies:
-        X_frame = pd.get_dummies(X_frame)
-    if X_array.shape != X_frame.shape:
-        raise ValueError(
-            f"`X_array` and `X_frame` must have same shape. got {X_array.shape} and {X_frame.shape}"
-        )
-    X_array = minmax_scale(X_array)
-    X_frame = pd.DataFrame(minmax_scale(X_frame.values), columns=X_frame.columns, index=X_frame.index)
-    dist_matrix = distance.cdist(X_frame.values.T, X_array.T, metric=metric)
-    return pd.DataFrame(dist_matrix.T, columns=X_frame.columns)
+def binary_features(X: np.ndarray, as_mask=False):
+    df = pd.DataFrame(X)
+    mask = (df.nunique() == 2).to_numpy()
+    return mask if as_mask else df.columns[mask].to_numpy()

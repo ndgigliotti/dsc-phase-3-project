@@ -33,7 +33,9 @@ def _(outliers: pd.Series, verb: str) -> None:
 
 
 @singledispatch
-def winsorize(data: pd.Series, outliers: pd.Series) -> pd.Series:
+def winsorize(
+    data: pd.Series, outliers: pd.Series, show_report: bool = True
+) -> pd.Series:
     """Reset outliers to outermost inlying values.
 
     Parameters
@@ -42,6 +44,8 @@ def winsorize(data: pd.Series, outliers: pd.Series) -> pd.Series:
         Data to Winsorize.
     outliers : Series or DataFrame
         Boolean mask of outliers.
+    show_report : bool, optional
+        Show number of modified observations.
 
     Returns
     -------
@@ -52,23 +56,42 @@ def winsorize(data: pd.Series, outliers: pd.Series) -> pd.Series:
         raise TypeError("`data` and `outliers` must be same type")
     min_in, max_in = data[~outliers].agg(["min", "max"])
     data = data.clip(lower=min_in, upper=max_in)
-    _display_report(outliers, "winsorized")
+    if show_report:
+        _display_report(outliers, "winsorized")
     return data
 
 
 @winsorize.register
-def _(data: pd.DataFrame, outliers: pd.DataFrame) -> pd.DataFrame:
+def _(
+    data: pd.DataFrame, outliers: pd.DataFrame, show_report: bool = True
+) -> pd.DataFrame:
     """Process DataFrames"""
     if type(data) != type(outliers):
         raise TypeError("`data` and `outliers` must be same type")
     bounds = data.mask(outliers).agg(["min", "max"]).T
     data = data.clip(lower=bounds["min"], upper=bounds["max"], axis=1)
-    _display_report(outliers, "winsorized")
+    if show_report:
+        _display_report(outliers, "winsorized")
     return data
 
 
+@winsorize.register
+def _(data: np.ndarray, outliers: np.ndarray, show_report: bool = True) -> np.ndarray:
+    """Process ndarrays"""
+    if type(data) != type(outliers):
+        raise TypeError("`data` and `outliers` must be same type")
+
+    # convert to DataFrame or Series
+    data = pd.DataFrame(data).squeeze()
+    outliers = pd.DataFrame(outliers).squeeze()
+
+    # dispatch to relevant function
+    data = winsorize(data, outliers, show_report=show_report)
+    return data.to_numpy()
+
+
 @singledispatch
-def trim(data: pd.Series, outliers: pd.Series) -> pd.Series:
+def trim(data: pd.Series, outliers: pd.Series, show_report: bool = True) -> pd.Series:
     """Remove outliers from data.
 
     Parameters
@@ -77,6 +100,8 @@ def trim(data: pd.Series, outliers: pd.Series) -> pd.Series:
         Data to trim.
     outliers : Series or DataFrame
         Boolean mask of outliers.
+    show_report : bool, optional
+        Show number of trimmed observations, defaults to True.
 
     Returns
     -------
@@ -86,21 +111,38 @@ def trim(data: pd.Series, outliers: pd.Series) -> pd.Series:
     if type(data) != type(outliers):
         raise TypeError("`data` and `outliers` must be same type")
     data = data.loc[~outliers].copy()
-    _display_report(outliers, "trimmed")
+    if show_report:
+        _display_report(outliers, "trimmed")
     return data
 
 
 @trim.register
-def _(data: pd.DataFrame, outliers: pd.DataFrame) -> pd.DataFrame:
+def _(
+    data: pd.DataFrame, outliers: pd.DataFrame, show_report: bool = True
+) -> pd.DataFrame:
     """Process DataFrames"""
     if type(data) != type(outliers):
         raise TypeError("`data` and `outliers` must be same type")
     data = data.loc[~outliers.any(axis=1)].copy()
-    _display_report(outliers, "trimmed")
+    if show_report:
+        _display_report(outliers, "trimmed")
     return data
 
 
-def tukey_fences(data: pd.Series) -> tuple:
+@trim.register
+def _(data: np.ndarray, outliers: np.ndarray, show_report: bool = True) -> np.ndarray:
+    """Process ndarrays"""
+    if type(data) != type(outliers):
+        raise TypeError("`data` and `outliers` must be same type")
+    # convert to DataFrame or Series
+    data = pd.DataFrame(data).squeeze()
+    outliers = pd.DataFrame(outliers).squeeze()
+
+    # dispatch to relevant function and convert back to ndarray
+    return trim(data, outliers).to_numpy()
+
+
+def tukey_fences(data: pd.Series, interpolation: str = "linear") -> tuple:
     """Get the lower and upper Tukey fences.
 
     Tukey's fences are located at 1.5 * IQR from the IQR on either side.
@@ -109,6 +151,11 @@ def tukey_fences(data: pd.Series) -> tuple:
     ----------
     data : Series
         Distribution for calculating fences.
+    interpolation : str, optional
+        Method to use when quantile lies between two data points,
+        by default 'linear'. Possible values: 'linear', 'lower',
+        'higher', 'nearest', 'midpoint'. See the Pandas documentation
+        for Series.quantile.
 
     Returns
     -------
@@ -117,8 +164,8 @@ def tukey_fences(data: pd.Series) -> tuple:
     upper : float
         Upper Tukey fence.
     """
-    q1 = data.quantile(0.25)
-    q3 = data.quantile(0.75)
+    q1 = data.quantile(0.25, interpolation=interpolation)
+    q3 = data.quantile(0.75, interpolation=interpolation)
     iqr = q3 - q1
     lower = q1 - 1.5 * iqr
     upper = q3 + 1.5 * iqr
@@ -154,6 +201,19 @@ def _(data: pd.DataFrame) -> pd.DataFrame:
     return data.apply(tukey_outliers)
 
 
+@tukey_outliers.register
+def _(data: np.ndarray) -> np.ndarray:
+    """Process ndarrays"""
+    # convert to DataFrame or Series
+    data = pd.DataFrame(data).squeeze()
+
+    # route to relevant function
+    outliers = tukey_outliers(data)
+
+    # convert back to ndarray
+    return outliers.to_numpy()
+
+
 @singledispatch
 def z_outliers(data: pd.DataFrame, thresh: int = 3) -> pd.DataFrame:
     """Returns boolean mask of z-score outliers.
@@ -185,6 +245,13 @@ def _(data: pd.Series, thresh: int = 3) -> pd.Series:
     return z_outliers(data.to_frame(), thresh=thresh).squeeze()
 
 
+@z_outliers.register
+def _(data: np.ndarray, thresh: int = 3) -> np.ndarray:
+    """Process ndarrays"""
+    z_data = scale(data)
+    return np.abs(z_data) > thresh
+
+
 @singledispatch
 def quantile_outliers(
     data: pd.Series,
@@ -207,8 +274,10 @@ def quantile_outliers(
         Upper quantile boundary, by default 0.95.
     interpolation : str, optional
         Method to use when quantile lies between two data points,
-        by default "linear". See the Pandas documentation for
-        Series.quantile().
+        by default 'linear'. Possible values: 'linear', 'lower',
+        'higher', 'nearest', 'midpoint'. See the Pandas documentation
+        for Series.quantile.
+
 
     Returns
     -------
@@ -233,7 +302,23 @@ def _(
     return data.apply(quantile_outliers, **kwargs)
 
 
-def tukey_winsorize(data: pd.DataFrame) -> pd.DataFrame:
+@quantile_outliers.register
+def _(
+    data: np.ndarray,
+    lower: float = 0.05,
+    upper: float = 0.95,
+    interpolation: str = "linear",
+) -> pd.DataFrame:
+    """Process ndarrays"""
+    # convert to DataFrame or Series
+    data = pd.DataFrame(data).squeeze()
+    kwargs = dict(lower=lower, upper=upper, interpolation=interpolation)
+    # dispatch to relevant function
+    outliers = quantile_outliers(data)
+    return outliers.to_numpy()
+
+
+def tukey_winsorize(data: pd.DataFrame, show_report: bool = True) -> pd.DataFrame:
     """Reset outliers to outermost values within Tukey fences.
 
     For DataFrames, outliers are Winsorized independently for each feature.
@@ -242,6 +327,8 @@ def tukey_winsorize(data: pd.DataFrame) -> pd.DataFrame:
     ----------
     data : Series or DataFrame
         Data to Winsorize.
+    show_report : bool, optional
+        Show number of modified observations, defaults to True.
 
     Returns
     -------
@@ -249,10 +336,10 @@ def tukey_winsorize(data: pd.DataFrame) -> pd.DataFrame:
         Winsorized data, same type as input.
     """
     outliers = tukey_outliers(data)
-    return winsorize(data, outliers)
+    return winsorize(data, outliers, show_report)
 
 
-def tukey_trim(data: pd.DataFrame) -> pd.DataFrame:
+def tukey_trim(data: pd.DataFrame, show_report: bool = True) -> pd.DataFrame:
     """Remove observations beyond the Tukey fences.
 
     For DataFrames, outliers are found independently for each feature.
@@ -261,6 +348,8 @@ def tukey_trim(data: pd.DataFrame) -> pd.DataFrame:
     ----------
     data : Series or DataFrame
         Data to trim.
+    show_report : bool, optional
+        Show number of trimmed observations, defaults to True.
 
     Returns
     -------
@@ -268,10 +357,12 @@ def tukey_trim(data: pd.DataFrame) -> pd.DataFrame:
         Trimmed data, same type as input.
     """
     outliers = tukey_outliers(data)
-    return trim(data, outliers)
+    return trim(data, outliers, show_report)
 
 
-def z_winsorize(data: pd.DataFrame, thresh: int = 3) -> pd.DataFrame:
+def z_winsorize(
+    data: pd.DataFrame, thresh: int = 3, show_report: bool = True
+) -> pd.DataFrame:
     """Reset outliers to outermost values within z-score threshold.
 
     Parameters
@@ -280,6 +371,8 @@ def z_winsorize(data: pd.DataFrame, thresh: int = 3) -> pd.DataFrame:
         Data to Winsorize.
     thresh : int, optional
         Z-score threshold for outliers, by default 3.
+    show_report : bool, optional
+        Show number of modified observations, defaults to True.
 
     Returns
     -------
@@ -287,10 +380,12 @@ def z_winsorize(data: pd.DataFrame, thresh: int = 3) -> pd.DataFrame:
         Winsorized data, same type as input.
     """
     outliers = z_outliers(data, thresh=thresh)
-    return winsorize(data, outliers)
+    return winsorize(data, outliers, show_report)
 
 
-def z_trim(data: pd.DataFrame, thresh: int = 3) -> pd.DataFrame:
+def z_trim(
+    data: pd.DataFrame, thresh: int = 3, show_report: bool = True
+) -> pd.DataFrame:
     """Remove observations beyond the z-score threshold.
 
     Parameters
@@ -299,6 +394,8 @@ def z_trim(data: pd.DataFrame, thresh: int = 3) -> pd.DataFrame:
         Data to trim.
     thresh : int, optional
         Z-score threshold for outliers, by default 3.
+    show_report : bool, optional
+        Show number of trimmed observations, defaults to True.
 
     Returns
     -------
@@ -306,7 +403,7 @@ def z_trim(data: pd.DataFrame, thresh: int = 3) -> pd.DataFrame:
         Trimmed data, same type as input.
     """
     outliers = z_outliers(data, thresh=thresh)
-    return trim(data, outliers)
+    return trim(data, outliers, show_report)
 
 
 def quantile_winsorize(
@@ -314,6 +411,7 @@ def quantile_winsorize(
     lower: float = 0.05,
     upper: float = 0.95,
     interpolation: str = "linear",
+    show_report: bool = True,
 ) -> pd.DataFrame:
     """Reset outliers to outermost values within quantile bounds.
 
@@ -331,8 +429,11 @@ def quantile_winsorize(
         Upper quantile boundary, by default 0.95.
     interpolation : str, optional
         Method to use when quantile lies between two data points,
-        by default "linear". See the Pandas documentation for
-        Series.quantile().
+        by default 'linear'. Possible values: 'linear', 'lower',
+        'higher', 'nearest', 'midpoint'. See the Pandas documentation
+        for Series.quantile.
+    show_report : bool, optional
+        Show number of modified observations, defaults to True.
 
     Returns
     -------
@@ -341,7 +442,7 @@ def quantile_winsorize(
     """
     kwargs = dict(lower=lower, upper=upper, interpolation=interpolation)
     outliers = quantile_outliers(data, **kwargs)
-    return winsorize(data, outliers)
+    return winsorize(data, outliers, show_report)
 
 
 def quantile_trim(
@@ -349,6 +450,7 @@ def quantile_trim(
     lower: float = 0.05,
     upper: float = 0.95,
     interpolation: str = "linear",
+    show_report: bool = True,
 ) -> pd.DataFrame:
     """Remove observations beyond the `lower` and `upper` quantiles.
 
@@ -366,8 +468,11 @@ def quantile_trim(
         Upper quantile boundary, by default 0.95.
     interpolation : str, optional
         Method to use when quantile lies between two data points,
-        by default "linear". See the Pandas documentation for
-        Series.quantile().
+        by default 'linear'. Possible values: 'linear', 'lower',
+        'higher', 'nearest', 'midpoint'. See the Pandas documentation
+        for Series.quantile.
+    show_report : bool, optional
+        Show number of trimmed observations, defaults to True.
 
     Returns
     -------
@@ -376,4 +481,4 @@ def quantile_trim(
     """
     kwargs = dict(lower=lower, upper=upper, interpolation=interpolation)
     outliers = quantile_outliers(data, **kwargs)
-    return trim(data, outliers)
+    return trim(data, outliers, show_report)
