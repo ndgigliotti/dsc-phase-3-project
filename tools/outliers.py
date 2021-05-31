@@ -255,35 +255,55 @@ def _(data: np.ndarray, thresh: int = 3) -> np.ndarray:
 @singledispatch
 def quantile_outliers(
     data: pd.Series,
-    lower: float = 0.05,
-    upper: float = 0.95,
+    inner: float = 0.9,
+    lower: float = None,
+    upper: float = None,
     interpolation: str = "linear",
 ) -> pd.Series:
-    """Returns boolean mask of quantile-determined outliers.
+    """Returns boolean mask of observations outside the specified range.
 
-    Inliers are anything between the `lower` and `upper` quantiles,
-    inclusive. Missing values are considered inliers.
+    The `lower` and `upper` quantiles mark the boundaries for inliers
+    (inclusive). The parameter `inner` allows you to specify the central
+    quantile range of the inliers, and is equivalent to setting symmetrical
+    `lower` and `upper` bounds. For DataFrames, outliers are determined
+    independently for each feature.
 
     Parameters
     ----------
     data : Series or DataFrame
-        Data to examine for outliers.
+        Data to Winsorize.
+    inner : float, optional
+        Quantile range of inliers (i.e. `upper` - `lower`), by default 0.9.
+        Shorthand for specifying symmetrical `upper` and `lower` bounds.
+        Does nothing if `lower` or `upper` are specified.
     lower : float, optional
-        Lower quantile boundary, by default 0.05.
+        Lower quantile boundary, by default None. Overrides `inner`.
     upper : float, optional
-        Upper quantile boundary, by default 0.95.
+        Upper quantile boundary, by default None. Overrides `inner`.
     interpolation : str, optional
         Method to use when quantile lies between two data points,
         by default 'linear'. Possible values: 'linear', 'lower',
         'higher', 'nearest', 'midpoint'. See the Pandas documentation
         for Series.quantile.
 
-
     Returns
     -------
     Series or DataFrame
         Boolean mask of outliers, same type as input.
     """
+    if lower or upper:
+        lower = 0.0 if lower is None else lower
+        upper = 1.0 if upper is None else upper
+        display(lower, upper)
+    elif inner:
+        lower = (1 - inner) / 2
+        upper = 1 - lower
+        display(lower, upper)
+    else:
+        raise ValueError(
+            "Must pass either `inner` or (one or both of) `lower` and `upper`"
+        )
+
     lower, upper = data.quantile([lower, upper], interpolation=interpolation)
     inliers = data.between(lower, upper, inclusive=True) | data.isna()
     return ~inliers
@@ -292,12 +312,13 @@ def quantile_outliers(
 @quantile_outliers.register
 def _(
     data: pd.DataFrame,
-    lower: float = 0.05,
-    upper: float = 0.95,
+    inner: float = 0.9,
+    lower: float = None,
+    upper: float = None,
     interpolation: str = "linear",
 ) -> pd.DataFrame:
     """Process DataFrames"""
-    kwargs = dict(lower=lower, upper=upper, interpolation=interpolation)
+    kwargs = {k: v for k, v in locals().items() if k != "data"}
     # simply map Series function across DataFrame
     return data.apply(quantile_outliers, **kwargs)
 
@@ -305,16 +326,17 @@ def _(
 @quantile_outliers.register
 def _(
     data: np.ndarray,
-    lower: float = 0.05,
-    upper: float = 0.95,
+    inner: float = 0.9,
+    lower: float = None,
+    upper: float = None,
     interpolation: str = "linear",
 ) -> pd.DataFrame:
     """Process ndarrays"""
     # convert to DataFrame or Series
     data = pd.DataFrame(data).squeeze()
-    kwargs = dict(lower=lower, upper=upper, interpolation=interpolation)
+    kwargs = {k: v for k, v in locals().items() if k != "data"}
     # dispatch to relevant function
-    outliers = quantile_outliers(data)
+    outliers = quantile_outliers(data, **kwargs)
     return outliers.to_numpy()
 
 
@@ -408,25 +430,32 @@ def z_trim(
 
 def quantile_winsorize(
     data: pd.DataFrame,
-    lower: float = 0.05,
-    upper: float = 0.95,
+    inner: float = 0.9,
+    lower: float = None,
+    upper: float = None,
     interpolation: str = "linear",
     show_report: bool = True,
 ) -> pd.DataFrame:
-    """Reset outliers to outermost values within quantile bounds.
+    """Reset outliers to outermost values within the specified range.
 
     The `lower` and `upper` quantiles mark the boundaries for inliers
-    (inclusive). For DataFrames, outliers are determined independently for
-    each feature.
+    (inclusive). The parameter `inner` allows you to specify the central
+    quantile range of the inliers, and is equivalent to setting symmetrical
+    `lower` and `upper` bounds. For DataFrames, outliers are determined
+    independently for each feature.
 
     Parameters
     ----------
     data : Series or DataFrame
         Data to Winsorize.
+    inner : float, optional
+        Quantile range of inliers (i.e. `upper` - `lower`), by default 0.9.
+        Shorthand for specifying symmetrical `upper` and `lower` bounds.
+        Does nothing if `lower` or `upper` are specified.
     lower : float, optional
-        Lower quantile boundary, by default 0.05.
+        Lower quantile boundary, by default None. Overrides `inner`.
     upper : float, optional
-        Upper quantile boundary, by default 0.95.
+        Upper quantile boundary, by default None. Overrides `inner`.
     interpolation : str, optional
         Method to use when quantile lies between two data points,
         by default 'linear'. Possible values: 'linear', 'lower',
@@ -440,32 +469,40 @@ def quantile_winsorize(
     Series or DataFrame
         Winsorized data, same type as input.
     """
-    kwargs = dict(lower=lower, upper=upper, interpolation=interpolation)
+    kwargs = ["inner", "lower", "upper", "interpolation"]
+    kwargs = pd.Series(locals()).loc[kwargs]
     outliers = quantile_outliers(data, **kwargs)
     return winsorize(data, outliers, show_report)
 
 
 def quantile_trim(
     data: pd.DataFrame,
-    lower: float = 0.05,
-    upper: float = 0.95,
+    inner: float = 0.9,
+    lower: float = None,
+    upper: float = None,
     interpolation: str = "linear",
     show_report: bool = True,
 ) -> pd.DataFrame:
-    """Remove observations beyond the `lower` and `upper` quantiles.
+    """Remove observations outside the specified quantile range.
 
     The `lower` and `upper` quantiles mark the boundaries for inliers
-    (inclusive). For DataFrames, outliers are determined independently for
-    each feature.
+    (inclusive). The parameter `inner` allows you to specify the central
+    quantile range of the inliers, and is equivalent to setting symmetrical
+    `lower` and `upper` bounds. For DataFrames, outliers are determined
+    independently for each feature.
 
     Parameters
     ----------
     data : Series or DataFrame
         Data to trim.
+    inner : float, optional
+        Quantile range of inliers (i.e. `upper` - `lower`), by default 0.9.
+        Shorthand for specifying symmetrical `upper` and `lower` bounds.
+        Does nothing if `lower` or `upper` are specified.
     lower : float, optional
-        Lower quantile boundary, by default 0.05.
+        Lower quantile boundary, by default None. Overrides `inner`.
     upper : float, optional
-        Upper quantile boundary, by default 0.95.
+        Upper quantile boundary, by default None. Overrides `inner`.
     interpolation : str, optional
         Method to use when quantile lies between two data points,
         by default 'linear'. Possible values: 'linear', 'lower',
@@ -479,6 +516,7 @@ def quantile_trim(
     Series or DataFrame
         Trimmed data, same type as input.
     """
-    kwargs = dict(lower=lower, upper=upper, interpolation=interpolation)
+    kwargs = ["inner", "lower", "upper", "interpolation"]
+    kwargs = pd.Series(locals()).loc[kwargs]
     outliers = quantile_outliers(data, **kwargs)
     return trim(data, outliers, show_report)
