@@ -1,5 +1,8 @@
 import datetime
+import inspect
+from typing import Callable
 from time import perf_counter
+
 import numpy as np
 import pandas as pd
 
@@ -116,6 +119,29 @@ def binary_cols(data: pd.DataFrame) -> list:
     """
     return data.columns[data.nunique() == 2].to_list()
 
+def get_defaults(callable: Callable) -> dict:
+    """Returns dict of parameters with their default values, if any.
+
+    Parameters
+    ----------
+    callable : Callable
+        Callable to look up parameters for.
+
+    Returns
+    -------
+    dict
+        Parameters with default values, if any.
+
+    Raises
+    ------
+    TypeError
+        `callable` must be Callable.
+    """
+    if not isinstance(callable, Callable):
+        raise TypeError(f"`callable` must be Callable, not {type(callable)}")
+    params = pd.Series(inspect.signature(callable).parameters)
+    defaults = params.map(lambda x: x.default)
+    return defaults.to_dict()
 
 # def transform(data: pd.DataFrame, pipe: list):
 #     tr = data.to_numpy()

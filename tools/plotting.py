@@ -81,7 +81,7 @@ def figsize_like(data: pd.DataFrame, scale: float = 0.85) -> np.ndarray:
 def add_tukey_marks(
     data: pd.Series,
     ax: plt.Axes,
-    annot: bool=True,
+    annot: bool = True,
     iqr_color: str = "r",
     fence_color: str = "k",
     fence_style: str = "--",
@@ -209,7 +209,9 @@ def calc_subplots_size(nplots: int, ncols: int, sp_height: int) -> tuple:
     return nrows, figsize
 
 
-def multi_dist(data: pd.DataFrame, tukey_marks=False, ncols=3, sp_height=5, **kwargs) -> np.ndarray:
+def multi_dist(
+    data: pd.DataFrame, tukey_marks=False, ncols=3, sp_height=5, **kwargs
+) -> np.ndarray:
     data = data.loc[:, utils.numeric_cols(data)]
     nrows, figsize = calc_subplots_size(data.columns.size, ncols, sp_height)
     fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
@@ -229,12 +231,23 @@ def multi_dist(data: pd.DataFrame, tukey_marks=False, ncols=3, sp_height=5, **kw
             ax.set_ylabel(None)
     return axs
 
-def multi_countplot(data: pd.DataFrame, normalize=False, heat="coolwarm", heat_desat=0.6, ncols=3, sp_height=5, orient="h", sort="desc", **kwargs) -> plt.Figure:
+
+def multi_countplot(
+    data: pd.DataFrame,
+    normalize=False,
+    heat="coolwarm",
+    heat_desat=0.6,
+    ncols=3,
+    sp_height=5,
+    orient="h",
+    sort="desc",
+    **kwargs,
+) -> plt.Figure:
     nrows, figsize = calc_subplots_size(data.columns.size, ncols, sp_height)
     fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
     sort = sort.lower()
     format_spec = "{x:.0%}" if normalize else "{x:,.0f}"
-    data = data.loc[:, data.nunique().sort_values(ascending=(sort=="asc")).index]
+    data = data.loc[:, data.nunique().sort_values(ascending=(sort == "asc")).index]
     for ax in axs.flat:
         ax.set_visible(False)
     for ax, column in zip(axs.flat, data.columns):
@@ -243,7 +256,16 @@ def multi_countplot(data: pd.DataFrame, normalize=False, heat="coolwarm", heat_d
         col_df.index.name = column
         col_df.reset_index(inplace=True)
         pal = heat_palette(col_df["Count"], heat, desat=heat_desat)
-        ax = simple_barplot(col_df, column, "Count", ax=ax, orient=orient, sort=sort, palette=pal, **kwargs)
+        ax = simple_barplot(
+            col_df,
+            column,
+            "Count",
+            ax=ax,
+            orient=orient,
+            sort=sort,
+            palette=pal,
+            **kwargs,
+        )
         ax.set_title(f"`{column}` Value Counts")
         annot_bars(ax, orient=orient, format_spec=format_spec)
         count_axis = ax.xaxis if orient.lower() == "h" else ax.yaxis
@@ -256,6 +278,7 @@ def multi_countplot(data: pd.DataFrame, normalize=False, heat="coolwarm", heat_d
             ax.set_ylabel(None)
     fig.tight_layout()
     return fig
+
 
 def multi_scatter(
     data: pd.DataFrame,
@@ -391,6 +414,7 @@ def annot_bars(
         )
     return ax
 
+
 def heat_palette(data, palette_name, desat=0.6):
     heat = pd.Series(
         sns.color_palette(palette_name, desat=desat, n_colors=201),
@@ -398,6 +422,7 @@ def heat_palette(data, palette_name, desat=0.6):
     )
     idx = np.around(minmax_scale(data, feature_range=(-100, 100))).astype(np.int64)
     return heat.loc[idx]
+
 
 def heated_barplot(
     data: pd.Series,
