@@ -19,7 +19,7 @@ I train my predictive classifier on a Banco de Portugal telemarketing dataset wh
 
 ## Feature Explanations
 
-Note that I have renamed some of the features from the original dataset to make them easier to interpret.
+Note that I have renamed, added, or removed some features.
 
 #### Client Information
    
