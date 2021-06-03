@@ -82,9 +82,11 @@ Here is a look at the diagnostic plots (confusion matrix, ROC curve, precision-r
 ![png](images/main_notebook_117_1.png)
 
 </div>
+
 The highest magnitude coefficients are 'prev_success', 'contact_cellular', 'n_employed', and 'contact_month_may'. The most interesting novel discovery gleaned from the model is that the Portuguese employment count has a very strong negative relationship with clients choosing to invest. I don't understand why this is, but it is undoubtedly very strong. When employment is low, bank marketing for term deposits is highly effective!
 
 <div align="center">
+<br>
 
 ![png](images/main_notebook_125_1.png)
     
