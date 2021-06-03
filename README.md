@@ -33,7 +33,7 @@ Note that I have renamed some of the features from the original dataset to make 
 
 #### Current Campaign
 
-8. 'contact_type' - call type of **last contact** (cellular or landline)
+8. 'contact_cellular' - call was on a cellular rather than landline
 9. 'contact_month' - month of **last contact**
 10. 'contact_weekday' - weekday of **last contact**
 11. 'contact_duration' - duration of **last contact** in seconds
@@ -44,17 +44,18 @@ Note that I have renamed some of the features from the original dataset to make 
 
 #### Previous Campaigns
 
-14. 'days_since_prev' - number of days since last contacted during previous campaign
-15. 'prev_contact_count' - total number of contacts before this campaign
-16. 'prev_outcome' - sales result of previous campaign
+14. 'recent_prev_contact' - last contacted less than one week ago during previous campaign
+15. 'prev_contact' - was contacted during a previous campaign
+16. 'prev_failure' - previous campaign did not result in a sale
+17. 'prev_success' - previous campaign resulted in a sale
 
 #### Economic Context
 
-17. 'emp_var_rate' - employment variation rate (quarterly indicator)
-18. 'cons_price_idx' - consumer price index (monthly indicator)
-19. 'cons_conf_idx' - consumer confidence index (monthly indicator)
-20. 'euribor_3m' - euribor 3 month rate (daily indicator)
-21. 'n_employed' - thousands of people employed (quarterly indicator)
+18. 'emp_var_rate' - employment variation rate (quarterly indicator)
+19. 'cons_price_idx' - consumer price index (monthly indicator)
+20. 'cons_conf_idx' - consumer confidence index (monthly indicator)
+21. 'euribor_3m' - euribor 3 month rate (daily indicator)
+22. 'n_employed' - thousands of people employed (quarterly indicator)
 
 # Methods
 
@@ -74,6 +75,7 @@ Note that I have renamed some of the features from the original dataset to make 
 6. I retrain the final model pipeline on the full dataset.
 
 # Final Model
+
 Here is a look at the diagnostic plots (confusion matrix, ROC curve, precision-recall curve) of the final model before it was retrained on the full dataset. Notice the strong diagonal on the confusion matrix, with ~0.71 positive recall. The average precision (AP) score is 0.42 and the weighted ROC AUC score is 0.78. Not bad, after dropping 'contact_duration', the strongest feature in the dataset.
 ![png](images/main_notebook_117_1.png)
 
@@ -83,11 +85,13 @@ The highest magnitude coefficients are 'prev_success', 'contact_cellular', 'n_em
     
 
 # Future Work
+
 The most important future work would be to build different types of models and compare them to my final `LogisticRegression`. `RandomForestClassifier`, `LinearSVC`, and `KNeighborsClassifier` are three obvious choices. Unlike most support vector machines, the `LinearSVC` is able to handle datasets with large numbers of observations. But as it is a linear model, I still have to worry about multicollinearity.
 
 Multicollinearity is not a concern, however, with the `RandomForestClassifier` or the `KNeighborsClassifier`. That means no features have to be dropped on that account. This alone is reason to think one of these models could perform better than my regression.  Of all of these, I see the most potential in the `RandomForestClassifier`, in part because it has so many hyperparameters to tune.
 
 # Repository Guide
+
 - My custom analysis code can be found in the 'tools' module/directory.
   - The original data files are located in the 'data' directory.
   - The final model pipeline is saved in the 'models' directory.
