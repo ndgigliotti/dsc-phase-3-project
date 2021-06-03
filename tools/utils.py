@@ -1,14 +1,11 @@
-import datetime
 import inspect
-from typing import Callable
-from time import perf_counter
+from typing import Callable, List
 
 import numpy as np
 import pandas as pd
+from pandas._typing import FrameOrSeries
 
 NULL = frozenset([np.nan, pd.NA, None])
-DATE_FORMAT = "%Y-%m-%d"
-DATETIME_FORMAT = "%Y-%m-%dT%H-%M-%S"
 
 
 def numeric_cols(data: pd.DataFrame) -> list:
@@ -156,6 +153,7 @@ def pandas_heatmap(
     vmax=None,
     axis=None,
 ):
+    """Style DataFrame as a heatmap."""
     table = frame.style.background_gradient(
         cmap=cmap, low=low, high=high, vmin=vmin, vmax=vmax, axis=axis
     )
@@ -166,8 +164,31 @@ def pandas_heatmap(
 
 
 def filter_pipe(
-    data: pd.DataFrame, like: list = None, regex: list = None, axis: int = None
-) -> pd.DataFrame:
+    data: FrameOrSeries,
+    like: List[str] = None,
+    regex: List[str] = None,
+    axis: int = None,
+) -> FrameOrSeries:
+    """Subset the DataFrame or Series labels with more than one filter at once.
+
+    Parameters
+    ----------
+    data: DataFrame or Series
+        DataFrame or Series to filter labels on.
+    like : list of str
+        Keep labels from axis for which "like in label == True".
+    regex : list of str
+        Keep labels from axis for which re.search(regex, label) == True.
+    axis : {0 or ‘index’, 1 or ‘columns’, None}, default None
+        The axis to filter on, expressed either as an index (int)
+        or axis name (str). By default this is the info axis,
+        'index' for Series, 'columns' for DataFrame.
+
+    Returns
+    -------
+    Dataframe or Series
+        Subset of `data`.
+    """
     if like and regex:
         raise ValueError("Cannot pass both `like` and `regex`")
     elif like:
@@ -189,6 +210,7 @@ def to_title(snake_case: str):
     """Format snake case string as title."""
     return snake_case.replace("_", " ").strip().title()
 
+
 def title_mode(data: pd.DataFrame):
     """Return copy of `data` with strings formatted as titles."""
     result = data.copy()
@@ -201,13 +223,47 @@ def title_mode(data: pd.DataFrame):
         result.index = result.index.map(to_title)
     return result
 
-def cartesian(*xi):
+
+def cartesian(*xi: np.ndarray) -> np.ndarray:
+    """Return Cartesian product of 1d arrays.
+
+    Returns
+    -------
+    ndarray
+        Cartesian product.
+    """
     return np.array(np.meshgrid(*xi)).T.reshape(-1, len(xi))
 
 
-def broad_corr(frame: pd.DataFrame, other: pd.DataFrame):
+def broad_corr(frame: pd.DataFrame, other: pd.DataFrame) -> pd.DataFrame:
+    """Get correlations between features of one frame with those of another.
+
+    Parameters
+    ----------
+    frame : DataFrame
+        First DataFrame.
+    other : DataFrame
+        Second DataFrame.
+
+    Returns
+    -------
+    DataFrame
+        Pearson correlations.
+    """
     return other.apply(lambda x: frame.corrwith(x))
 
 
-def swap_index(data: pd.Series):
+def swap_index(data: pd.Series) -> pd.Series:
+    """Swap index and values.
+
+    Parameters
+    ----------
+    data : Series
+        Series for swapping index and values.
+
+    Returns
+    -------
+    Series
+        Swapped Series.
+    """
     return pd.Series(data.index, index=data.values, name=data.name, copy=True)

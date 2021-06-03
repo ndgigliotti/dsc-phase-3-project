@@ -1,4 +1,4 @@
-from functools import singledispatch, partial
+from functools import partial, singledispatch
 from types import MappingProxyType
 from typing import Callable, Tuple, Union
 
@@ -6,12 +6,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-import statsmodels.api as sm
 from matplotlib import ticker
 from sklearn.preprocessing import minmax_scale
-from . import outliers
-from . import utils
 
+from . import outliers, utils
+
+# Default style settings for heatmaps
 HEATMAP_STYLE = MappingProxyType(
     {
         "square": True,
@@ -26,12 +26,14 @@ HEATMAP_STYLE = MappingProxyType(
     }
 )
 
+# Matplotlib rcParams to (optionally) set
 MPL_DEFAULTS = MappingProxyType({"axes.labelpad": 10, "axes.titlepad": 5})
 
 _rng = np.random.default_rng(31)
 
 
 def _format_big_number(num, dec):
+    """Format large number using abreviations like 'K' and 'M'."""
     abb = ""
     if num != 0:
         mag = np.log10(np.abs(num))
@@ -51,7 +53,20 @@ def _format_big_number(num, dec):
     return f"{num:,.{dec}f}{abb}"
 
 
-def big_number_formatter(dec=0):
+def big_number_formatter(dec: int = 0) -> ticker.FuncFormatter:
+    """Formatter for large numbers; uses abbreviations like 'K' and 'M'.
+
+    Parameters
+    ----------
+    dec : int, optional
+        Decimal precision, by default 0.
+
+    Returns
+    -------
+    FuncFormatter
+        Tick formatter.
+    """
+
     @ticker.FuncFormatter
     def formatter(num, pos):
         return _format_big_number(num, dec)
@@ -59,7 +74,20 @@ def big_number_formatter(dec=0):
     return formatter
 
 
-def big_money_formatter(dec=0):
+def big_money_formatter(dec: int = 0) -> ticker.FuncFormatter:
+    """Formatter for large monetary numbers; uses abbreviations like 'K' and 'M'.
+
+    Parameters
+    ----------
+    dec : int, optional
+        Decimal precision, by default 0.
+
+    Returns
+    -------
+    FuncFormatter
+        Tick formatter.
+    """
+
     @ticker.FuncFormatter
     def formatter(num, pos):
         return f"${_format_big_number(num, dec)}"
@@ -123,6 +151,17 @@ def add_tukey_marks(
 
 @singledispatch
 def rotate_ticks(ax: plt.Axes, deg: float, axis: str = "x"):
+    """Rotate ticks on `axis` by `deg`.
+
+    Parameters
+    ----------
+    ax : Axes or ndarray of Axes
+        Axes object or objects to rotate ticks on.
+    deg : float
+        Degree of rotation.
+    axis : str, optional
+        Axis on which to rotate ticks, 'x' (default) or 'y'.
+    """
     get_labels = getattr(ax, f"get_{axis}ticklabels")
     for label in get_labels():
         label.set_rotation(deg)
@@ -130,12 +169,24 @@ def rotate_ticks(ax: plt.Axes, deg: float, axis: str = "x"):
 
 @rotate_ticks.register
 def _(ax: np.ndarray, deg: float, axis: str = "x"):
+    """Process ndarrays"""
     axs = ax
     for ax in axs:
         rotate_ticks(ax, deg=deg, axis=axis)
 
 
 def map_ticklabels(ax: plt.Axes, mapper: Callable, axis: str = "x") -> None:
+    """Apply callable to tick labels.
+
+    Parameters
+    ----------
+    ax : Axes
+        Axes object to apply function on.
+    mapper : Callable
+        Callable to apply to tick labels.
+    axis : str, optional
+        Axis on which to apply callable, 'x' (default) or 'y'.
+    """
     axis = getattr(ax, f"{axis}axis")
     labels = [x.get_text() for x in axis.get_ticklabels()]
     labels = list(map(mapper, labels))
@@ -340,7 +391,9 @@ def mirror_plot(
         order = order[::-1]
 
     palette = cat_palette("deep", data.loc[:, y])
-    barplot = partial(sns.barplot, data=data, y=y, x=x, order=order, palette=palette, **kwargs)
+    barplot = partial(
+        sns.barplot, data=data, y=y, x=x, order=order, palette=palette, **kwargs
+    )
     fig, (ax1, ax2) = smart_subplots(nplots=2, size=size, ncols=2, sharey=True)
     barplot(ax=ax1, estimator=left_estimator)
     barplot(ax=ax2, estimator=right_estimator)
@@ -411,7 +464,7 @@ def multi_rel(
     kind="line",
     ncols: int = 3,
     size: Tuple[float, float] = (5.0, 5.0),
-    sharey=True,
+    sharey: bool = True,
     **kwargs,
 ) -> plt.Figure:
     """Plot each `x`-value against `y` on line graphs.
@@ -443,7 +496,9 @@ def multi_rel(
         sharey=sharey,
     )
     set_invisible(axs)
-    kinds = dict(line=sns.lineplot, scatter=sns.scatterplot, reg=sns.regplot, bar=sns.barplot)
+    kinds = dict(
+        line=sns.lineplot, scatter=sns.scatterplot, reg=sns.regplot, bar=sns.barplot
+    )
     plot = kinds[kind.lower()]
 
     for ax, column in zip(axs.flat, x):
@@ -576,7 +631,7 @@ def multi_countplot(
             **kwargs,
         )
         ax.set_title(f"`{column}` Value Counts")
-        annot_bars(ax=ax, orient=orient, format_spec=format_spec)
+        annot_bars(ax, orient=orient, format_spec=format_spec)
         count_axis = ax.xaxis if orient.lower() == "h" else ax.yaxis
         count_axis.set_major_formatter(ticker.StrMethodFormatter(format_spec))
     if axs.ndim > 1:
@@ -589,8 +644,8 @@ def multi_countplot(
     return fig
 
 
+@singledispatch
 def annot_bars(
-    *,
     ax: plt.Axes,
     dist: float = 0.15,
     color: str = "k",
@@ -601,7 +656,7 @@ def annot_bars(
     alpha: float = 0.5,
     drop_last: int = 0,
     **kwargs,
-) -> plt.Axes:
+) -> None:
     """Annotate a bar graph with the bar values.
 
     Parameters
@@ -624,11 +679,6 @@ def annot_bars(
         Opacity of text. Defaults to 0.5.
     drop_last : int, optional
         Number of bars to ignore on tail end. Defaults to 0.
-
-    Returns
-    -------
-    Axes
-        Annotated axes object.
     """
     if not compact:
         dist = -dist
@@ -661,16 +711,50 @@ def annot_bars(
             alpha=alpha,
             **kwargs,
         )
-    return ax
 
 
-def heat_palette(data, palette_name, desat=0.6):
+@annot_bars.register
+def _(
+    ax: np.ndarray,
+    dist: float = 0.15,
+    color: str = "k",
+    compact: bool = False,
+    orient: str = "h",
+    format_spec: str = "{x:.2f}",
+    fontsize: int = 12,
+    alpha: float = 0.5,
+    drop_last: int = 0,
+    **kwargs,
+) -> None:
+    """Process ndarrays"""
+    params = locals()
+    for ax in params.pop(ax).flat:
+        annot_bars(ax, **params)
+
+
+def heat_palette(data: pd.Series, palette_name: str, desat: float = 0.6) -> np.ndarray:
+    """Return Series of heat-colors corresponding to values in `data`.
+
+    Parameters
+    ----------
+    data : Series
+        Series of numeric values to associate with heat colors.
+    palette_name : str
+        Name of Seaborn color palette.
+    desat : float, optional
+        Saturation of Seaborn color palette, by default 0.6.
+
+    Returns
+    -------
+    ndarray
+        Heat colors aligned with `data`.
+    """
     heat = pd.Series(
         sns.color_palette(palette_name, desat=desat, n_colors=201),
         index=pd.RangeIndex(-100, 101),
     )
     idx = np.around(minmax_scale(data, feature_range=(-100, 100))).astype(np.int64)
-    return heat.loc[idx]
+    return heat.loc[idx].to_numpy()
 
 
 def heated_barplot(
@@ -695,12 +779,7 @@ def heated_barplot(
     """
     data.index = data.index.astype(str)
     data.sort_values(ascending=False, inplace=True)
-    heat = pd.Series(
-        sns.color_palette(heat, desat=heat_desat, n_colors=201),
-        index=pd.RangeIndex(-100, 101),
-    )
-    pal_vals = np.around(minmax_scale(data, feature_range=(-100, 100))).astype(np.int64)
-    palette = heat.loc[pal_vals]
+    palette = heat_palette(data, heat, desat=heat_desat)
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
     ax = sns.barplot(
@@ -708,9 +787,6 @@ def heated_barplot(
     )
     ax.axvline(0.0, color="k", lw=1, ls="-", alpha=0.33)
     return ax
-
-
-# def set_labels(axs, x_label=None, y_label=None, title=None, x_pad=None, y_pad=None)
 
 
 def cat_palette(

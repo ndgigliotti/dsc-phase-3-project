@@ -1,7 +1,8 @@
 import pandas as pd
-from sklearn.pipeline import Pipeline
-from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from sklearn.base import clone
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
+from sklearn.pipeline import Pipeline
+
 from .. import utils
 
 
