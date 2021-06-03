@@ -77,12 +77,18 @@ Note that I have renamed some of the features from the original dataset to make 
 # Final Model
 
 Here is a look at the diagnostic plots (confusion matrix, ROC curve, precision-recall curve) of the final model before it was retrained on the full dataset. Notice the strong diagonal on the confusion matrix, with ~0.71 positive recall. The average precision (AP) score is 0.42 and the weighted ROC AUC score is 0.78. Not bad, after dropping 'contact_duration', the strongest feature in the dataset.
+<div align="center">
+
 ![png](images/main_notebook_117_1.png)
 
+</div>
 The highest magnitude coefficients are 'prev_success', 'contact_cellular', 'n_employed', and 'contact_month_may'. The most interesting novel discovery gleaned from the model is that the Portuguese employment count has a very strong negative relationship with clients choosing to invest. I don't understand why this is, but it is undoubtedly very strong. When employment is low, bank marketing for term deposits is highly effective!
+
+<div align="center">
 
 ![png](images/main_notebook_125_1.png)
     
+</div>
 
 # Future Work
 
