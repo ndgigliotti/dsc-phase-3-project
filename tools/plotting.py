@@ -576,6 +576,7 @@ def multi_countplot(
     height: int = 5,
     orient: str = "h",
     sort: str = "desc",
+    annot:bool=True,
     **kwargs,
 ) -> plt.Figure:
     """Plot value counts of every feature in `data`.
@@ -598,6 +599,8 @@ def multi_countplot(
         Bar orientation, by default "h".
     sort : str, optional
         Direction for sorting bars. Can be 'asc' or 'desc' (default).
+    annot : bool, optional
+        Annotate bars, True by default.
 
     Returns
     -------
@@ -631,7 +634,8 @@ def multi_countplot(
             **kwargs,
         )
         ax.set_title(f"`{column}` Value Counts")
-        annot_bars(ax, orient=orient, format_spec=format_spec)
+        if annot:
+            annot_bars(ax, orient=orient, format_spec=format_spec)
         count_axis = ax.xaxis if orient.lower() == "h" else ax.yaxis
         count_axis.set_major_formatter(ticker.StrMethodFormatter(format_spec))
     if axs.ndim > 1:
