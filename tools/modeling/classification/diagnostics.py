@@ -1,7 +1,10 @@
+from typing import Union
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from IPython.display import display
+from pandas.io.formats.style import Styler
 from sklearn.base import BaseEstimator
 from sklearn.metrics import average_precision_score, balanced_accuracy_score
 from sklearn.metrics import classification_report as sk_report
@@ -13,8 +16,21 @@ from sklearn.pipeline import Pipeline
 from ...utils import pandas_heatmap
 
 
-def _get_estimator_name(estimator: BaseEstimator):
-    """Returns estimator class name, or that of the final estimator."""
+def _get_estimator_name(estimator: Union[BaseEstimator, Pipeline]) -> str:
+    """Returns estimator class name.
+
+    If a Pipeline is passed, returns the class name of the final estimator.
+
+    Parameters
+    ----------
+    estimator : Estimator or Pipeline
+        Estimator to get class name for.
+
+    Returns
+    -------
+    str
+        Class name.
+    """
     if isinstance(estimator, Pipeline):
         name = estimator[-1].__class__.__name__
     else:
@@ -44,7 +60,30 @@ def high_correlations(data: pd.DataFrame, thresh: float = 0.75) -> pd.Series:
     return corr_df[high]
 
 
-def classification_report(y_test, y_pred, zero_division="warn", heatmap=False):
+def classification_report(
+    y_test: Union[pd.Series, np.ndarray],
+    y_pred: np.ndarray,
+    zero_division: str = "warn",
+    heatmap: bool = False,
+) -> Union[pd.DataFrame, Styler]:
+    """Return diagnostic report for classification, optionally styled as a heatmap.
+
+    Parameters
+    ----------
+    y_test : Series or ndarray of shape (n_samples,)
+        Target test set.
+    y_pred :  ndarray of shape (n_samples,)
+        Values predicted from predictor test set.
+    zero_division : str, optional
+        Value to return for division by zero: 0, 1, or 'warn'.
+    heatmap : bool, optional
+        Style report as a heatmap, by default False.
+
+    Returns
+    -------
+    DataFrame or Styler (if `heatmap = True`)
+        Diagnostic report table.
+    """
     report = pd.DataFrame(
         sk_report(y_test, y_pred, output_dict=True, zero_division=zero_division)
     )
@@ -84,7 +123,30 @@ def compare_scores(estimator_1, estimator_2, X_test, y_test, prec=3, heatmap=Tru
     return pandas_heatmap(result) if heatmap else result
 
 
-def classification_plots(estimator, X_test, y_test, average="weighted"):
+def classification_plots(
+    estimator: BaseEstimator,
+    X_test: Union[pd.DataFrame, np.ndarray],
+    y_test: Union[pd.Series, np.ndarray],
+    average: str = "weighted",
+) -> plt.Figure:
+    """Plot confusion matrix, ROC curve, and precision-recall curve.
+
+    Parameters
+    ----------
+    estimator : BaseEstimator
+        Fitted classification estimator to evaluate.
+    X_test : DataFrame or ndarray of shape (n_samples, n_features)
+        Predictor test set.
+    y_test : Series or ndarray of shape (n_samples,)
+        target test set.
+    average : str, optional
+        Method of averaging: 'micro', 'macro', 'weighted' (default), 'samples'.
+
+    Returns
+    -------
+    Figure
+        Figure containing three subplots.
+    """
     fig, (ax1, ax2, ax3) = plt.subplots(ncols=3, figsize=(15, 5))
     plot_confusion_matrix(
         estimator, X_test, y_test, cmap="Blues", normalize="true", ax=ax1
@@ -112,7 +174,25 @@ def classification_plots(estimator, X_test, y_test, average="weighted"):
     return fig
 
 
-def standard_report(estimator, X_test, y_test, zero_division="warn"):
+def standard_report(
+    estimator: BaseEstimator,
+    X_test: Union[pd.DataFrame, np.ndarray],
+    y_test: Union[pd.Series, np.ndarray],
+    zero_division: str = "warn",
+) -> None:
+    """Display standard report of diagnostic metrics and plots for classification.
+
+    Parameters
+    ----------
+    estimator : BaseEstimator
+        Fitted classification estimator for evaluation.
+    X_test : DataFrame or ndarray of shape (n_samples, n_features)
+        Predictor test set.
+    y_test : Series or ndarray of shape (n_samples,)
+        Target test set.
+    zero_division : str, optional
+        Value to return for division by zero: 0, 1, or 'warn'.
+    """
     table = classification_report(
         y_test, estimator.predict(X_test), zero_division=zero_division, heatmap=True
     )
