@@ -71,7 +71,7 @@ Note that I have renamed, added, or removed some features.
     5. I perform a slight 95% Winsorization on the data before scaling to reduce the influence of outliers.
     6. I center the data on each feature's mean and scale to standard deviation.
     7. I use Scikit-Learn's built-in class weight balancing.
-    8. I use L2 regularization to weed out less relevant features.
+    8. I use L2 regularization to reduce overfitting.
 6. I retrain the final model pipeline on the full dataset.
 
 # Final Model
