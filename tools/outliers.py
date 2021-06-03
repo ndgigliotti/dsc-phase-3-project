@@ -294,11 +294,9 @@ def quantile_outliers(
     if lower or upper:
         lower = 0.0 if lower is None else lower
         upper = 1.0 if upper is None else upper
-        display(lower, upper)
     elif inner:
         lower = (1 - inner) / 2
         upper = 1 - lower
-        display(lower, upper)
     else:
         raise ValueError(
             "Must pass either `inner` or (one or both of) `lower` and `upper`"

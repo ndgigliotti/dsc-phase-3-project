@@ -1,16 +1,16 @@
-from functools import singledispatch
+from functools import singledispatch, partial
 from types import MappingProxyType
+from typing import Callable, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 import statsmodels.api as sm
-from sklearn.preprocessing import minmax_scale
 from matplotlib import ticker
-
-import tools.utils as utils
-import tools.outliers as outliers
+from sklearn.preprocessing import minmax_scale
+from . import outliers
+from . import utils
 
 HEATMAP_STYLE = MappingProxyType(
     {
@@ -25,6 +25,8 @@ HEATMAP_STYLE = MappingProxyType(
         "annot_kws": MappingProxyType({"fontsize": 10}),
     }
 )
+
+MPL_DEFAULTS = MappingProxyType({"axes.labelpad": 10, "axes.titlepad": 5})
 
 _rng = np.random.default_rng(31)
 
@@ -119,27 +121,6 @@ def add_tukey_marks(
     return ax
 
 
-def add_quantile_marks(
-    data: np.ndarray,
-    quantiles: list,
-    ax: plt.Axes,
-    line_color: str = "k",
-    line_style: str = "--",
-    percent_fmt: bool = True,
-) -> plt.Axes:
-    quant_labels = quantiles
-    quantiles = np.quantile(data, quant_labels)
-    text_yval = ax.get_ylim()[1]
-    text_yval *= 1.01
-    quant_labels = np.asarray(quant_labels) * 100
-    quant_labels = quant_labels.round().astype(np.int64)
-    for quant, label in zip(quantiles, quant_labels):
-        ax.axvline(quant, c=line_color, ls=line_style)
-        label = f"{label}%" if percent_fmt else str(label)
-        ax.text(quant, text_yval, label, ha="center")
-    return ax
-
-
 @singledispatch
 def rotate_ticks(ax: plt.Axes, deg: float, axis: str = "x"):
     get_labels = getattr(ax, f"get_{axis}ticklabels")
@@ -154,9 +135,46 @@ def _(ax: np.ndarray, deg: float, axis: str = "x"):
         rotate_ticks(ax, deg=deg, axis=axis)
 
 
+def map_ticklabels(ax: plt.Axes, mapper: Callable, axis: str = "x") -> None:
+    axis = getattr(ax, f"{axis}axis")
+    labels = [x.get_text() for x in axis.get_ticklabels()]
+    labels = list(map(mapper, labels))
+    axis.set_ticklabels(labels)
+
+
 def pair_corr_heatmap(
-    data, ignore=None, annot=True, high_corr=None, scale=0.5, ax=None, **kwargs
-):
+    *,
+    data: pd.DataFrame,
+    ignore: Union[str, list] = None,
+    annot: bool = True,
+    high_corr: float = None,
+    scale: float = 0.5,
+    ax: plt.Axes = None,
+    **kwargs,
+) -> plt.Axes:
+    """Plot a heatmap of the pairwise correlations in `data`.
+
+    Parameters
+    ----------
+    data : DataFrame
+        Data for pairwise correlations.
+    ignore : str or list, optional
+        Column or columns to ignore, by default None.
+    annot : bool, optional
+        Whether to annotate cells, by default True.
+    high_corr : float, optional
+        Threshold for high correlations, by default None. Causes cells
+        to be colored in all-or-nothing fashion.
+    scale : float, optional
+        Scale multiplier for figure size, by default 0.5.
+    ax : Axes, optional
+        Axes to plot on, by default None.
+
+    Returns
+    -------
+    Axes
+        The heatmap.
+    """
     if not ignore:
         ignore = []
     corr_df = data.drop(columns=ignore).corr()
@@ -184,7 +202,7 @@ def pair_corr_heatmap(
     return ax
 
 
-def calc_subplots_size(nplots: int, ncols: int, sp_height: int) -> tuple:
+def calc_subplots_size(nplots: int, ncols: int, height: int) -> tuple:
     """Calculate number of rows and figsize for subplots.
 
     Parameters
@@ -193,7 +211,7 @@ def calc_subplots_size(nplots: int, ncols: int, sp_height: int) -> tuple:
         Number of subplots.
     ncols : int
         Number of columns in figure.
-    sp_height : int
+    height : int
         Height of each subplot.
 
     Returns
@@ -204,47 +222,338 @@ def calc_subplots_size(nplots: int, ncols: int, sp_height: int) -> tuple:
         Width and height of figure.
 
     """
+    raise DeprecationWarning("Deprecated. Use `smart_subplots` instead.")
     nrows = int(np.ceil(nplots / ncols))
-    figsize = (ncols * sp_height, nrows * sp_height)
+    figsize = (ncols * height, nrows * height)
     return nrows, figsize
 
 
-def multi_dist(
-    data: pd.DataFrame, tukey_marks=False, ncols=3, sp_height=5, **kwargs
-) -> np.ndarray:
-    data = data.loc[:, utils.numeric_cols(data)]
-    nrows, figsize = calc_subplots_size(data.columns.size, ncols, sp_height)
-    fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
+def smart_subplots(
+    *,
+    nplots: int,
+    size: Tuple[float, float],
+    ncols: int = None,
+    nrows: int = None,
+    **kwargs,
+) -> Tuple[plt.Figure, np.ndarray]:
+    """Wrapper for `plt.subplots` which calculates the specifications.
+
+    Parameters
+    ----------
+    nplots : int
+        Number of subplots.
+    size : Tuple[float, float]
+        Size of each subplot in format (width, height).
+    ncols : int, optional
+        Number of columns in figure. Derived from `nplots` and `nrows` if not specified.
+    nrows : int, optional
+        Number of rows in figure. Derived from `nplots` and `ncols` if not specified.
+    **kwargs
+        Keyword arguments passed to `plt.subplots`.
+    Returns
+    -------
+    fig: Figure
+        Figure for the plot.
+    axs: Axes or array of Axes
+        Axes for the plot.
+    """
+    if ncols and not nrows:
+        nrows = int(np.ceil(nplots / ncols))
+    elif nrows and not ncols:
+        ncols = int(np.ceil(nplots / nrows))
+    elif not (nrows or ncols):
+        raise ValueError("Must pass either `ncols` or `nrows`")
+
+    figsize = (ncols * size[0], nrows * size[1])
+    kwargs.update(nrows=nrows, ncols=ncols, figsize=figsize)
+    fig, axs = plt.subplots(**kwargs)
+    return fig, axs
+
+
+def set_invisible(axs: np.ndarray) -> None:
+    """Sets all axes to invisible."""
     for ax in axs.flat:
         ax.set_visible(False)
-    for ax, column in zip(axs.flat, data.columns):
+
+
+def flip_axis(ax: plt.Axes, axis: str = "x") -> None:
+    """Flip axis so it extends in the opposite direction.
+
+    Parameters
+    ----------
+    ax : Axes
+        Axes object with axis to flip.
+    axis : str, optional
+        Which axis to flip, by default "x".
+    """
+    if axis.lower() == "x":
+        ax.set_xlim(reversed(ax.get_xlim()))
+    elif axis.lower() == "y":
+        ax.set_ylim(reversed(ax.get_ylim()))
+    else:
+        raise ValueError("`axis` must be 'x' or 'y'")
+
+
+def mirror_plot(
+    *,
+    data: pd.DataFrame,
+    x: str,
+    y: str,
+    left_estimator: Callable = np.sum,
+    right_estimator: Callable = np.mean,
+    sort_side="right",
+    sort_dir="desc",
+    size: Tuple[float, float] = (4, 8),
+    **kwargs,
+) -> plt.Figure:
+    """Plot two horizontal bar graphs aligned back-to-back on the vertical axis.
+
+    Parameters
+    ----------
+    data : DataFrame
+        Data for plotting.
+    x : str
+        Variable for horizontal axis.
+    y : str
+        Variable for vertical axis.
+    left_estimator : Callable, optional
+        Estimator for left graph, by default np.sum.
+    right_estimator : Callable, optional
+        Estimator for right graph, by default np.mean.
+    sort_side : str, optional
+        Side to sort on, 'left' or 'right' (default).
+    sort_dir : str, optional
+        Sort direction, 'asc' or 'desc' (default).
+    size : Tuple[float, float], optional
+        Size of each subplot, by default (4, 8).
+
+    Returns
+    -------
+    Figure
+        Figure for plot.
+    """
+    if sort_side.lower() not in {"right", "left"}:
+        raise ValueError("`sort_side` must be 'right' or 'left'")
+    sort_est = left_estimator if sort_side.lower() == "left" else right_estimator
+    order = data.groupby(y)[x].agg(sort_est).sort_values().index.to_numpy()
+    if sort_dir.lower() == "desc":
+        order = order[::-1]
+
+    palette = cat_palette("deep", data.loc[:, y])
+    barplot = partial(sns.barplot, data=data, y=y, x=x, order=order, palette=palette, **kwargs)
+    fig, (ax1, ax2) = smart_subplots(nplots=2, size=size, ncols=2, sharey=True)
+    barplot(ax=ax1, estimator=left_estimator)
+    barplot(ax=ax2, estimator=right_estimator)
+
+    ax1.set_ylabel(None)
+    ax2.set_ylabel(None)
+    flip_axis(ax1)
+    fig.tight_layout()
+    return fig
+
+
+def grouper_plot(
+    *,
+    data: pd.DataFrame,
+    grouper: str = None,
+    x: str = None,
+    y: str = None,
+    kind: str = "line",
+    ncols: int = 3,
+    height: int = 4,
+    **kwargs,
+) -> plt.Figure:
+    """Plot data by group---one subplot per group.
+
+    Parameters
+    ----------
+    data : DataFrame
+        Data to plot, by default None.
+    grouper : str, optional
+        Column to group by, by default None.
+    x : str, optional
+        Variable for x-axis, by default None.
+    y : str, optional
+        Variable for y-axis, by default None.
+    kind : str, optional
+        Kind of plot for Dataframe.plot().
+        Options: 'line' (default), 'bar', 'barh', 'hist', 'box',
+        'kde', 'density', 'area', 'pie', 'scatter', 'hexbin'.
+    ncols : int, optional
+        Number of subplot columns, by default 3
+    height : int, optional
+        Height of square subplots, by default 4
+
+    Returns
+    -------
+    Figure
+        The figure.
+    """
+    data.sort_values(x, inplace=True)
+    grouped = data.groupby(grouper)
+    fig, axs = smart_subplots(nplots=len(grouped), ncols=ncols, size=(height, height))
+    set_invisible(axs)
+
+    for ax, (label, group) in zip(axs.flat, grouped):
+        group.plot(x=x, y=y, ax=ax, kind=kind, **kwargs)
+        ax.set_title(label)
         ax.set_visible(True)
-        ax = sns.histplot(data=data, x=column, ax=ax, **kwargs)
-        if tukey_marks:
-            add_tukey_marks(data[column], ax, annot=False)
-        ax.set_title(f"Distribution of `{column}`")
+
+    fig.tight_layout()
+    return fig
+
+
+def multi_rel(
+    *,
+    data: pd.DataFrame,
+    x: Union[str, list],
+    y: str,
+    kind="line",
+    ncols: int = 3,
+    size: Tuple[float, float] = (5.0, 5.0),
+    sharey=True,
+    **kwargs,
+) -> plt.Figure:
+    """Plot each `x`-value against `y` on line graphs.
+    Parameters
+    ----------
+    data : DataFrame
+        Data with distributions to plot.
+    x : str or list-like of str
+        Dependent variable(s).
+    y : str
+        Independent variable.
+    kind : str, optional
+        Kind of plot: 'line' (default), 'scatter', 'reg', 'bar'.
+    ncols : int, optional
+        Number of columns for subplots, defaults to 3.
+    size : Tuple[float, float], optional.
+        Size of each subpot, by default (5.0, 5.0).
+    sharey: bool, optional
+        Share the y axis between subplots. Defaults to True.
+    Returns
+    -------
+    Figure7498
+        Multiple relational plots.
+    """
+    fig, axs = smart_subplots(
+        nplots=data.columns.size,
+        ncols=ncols,
+        size=size,
+        sharey=sharey,
+    )
+    set_invisible(axs)
+    kinds = dict(line=sns.lineplot, scatter=sns.scatterplot, reg=sns.regplot, bar=sns.barplot)
+    plot = kinds[kind.lower()]
+
+    for ax, column in zip(axs.flat, x):
+        ax.set_visible(True)
+        ax = plot(data=data, x=column, y=y, ax=ax, **kwargs)
+
     if axs.ndim > 1:
         for ax in axs[:, 1:].flat:
             ax.set_ylabel(None)
     elif axs.size > 1:
         for ax in axs[1:]:
             ax.set_ylabel(None)
-    return axs
+    fig.tight_layout()
+    return fig
+
+
+def multi_dist(
+    *,
+    data: pd.DataFrame,
+    tukey_marks: bool = False,
+    ncols: int = 3,
+    height: int = 5,
+    **kwargs,
+) -> plt.Figure:
+    """Plot histograms for all numeric variables in `data`.
+
+    Parameters
+    ----------
+    data : DataFrame
+        Data with distributions to plot.
+    tukey_marks : bool, optional
+        Annotate histograms with IQR and Tukey's fences, by default False.
+    ncols : int, optional
+        Number of columns for subplots, by default 3.
+    height : int, optional
+        Subpot height, by default 5.
+
+    Returns
+    -------
+    Figure
+        Multiple histograms.
+    """
+    data = data.select_dtypes("number")
+    fig, axs = smart_subplots(
+        nplots=data.columns.size,
+        ncols=ncols,
+        size=(height, height),
+    )
+    set_invisible(axs)
+
+    for ax, column in zip(axs.flat, data.columns):
+        ax.set_visible(True)
+        ax = sns.histplot(data=data, x=column, ax=ax, **kwargs)
+        if tukey_marks:
+            add_tukey_marks(data[column], ax, annot=False)
+        ax.set_title(f"Distribution of `{column}`")
+
+    if axs.ndim > 1:
+        for ax in axs[:, 1:].flat:
+            ax.set_ylabel(None)
+    elif axs.size > 1:
+        for ax in axs[1:]:
+            ax.set_ylabel(None)
+    fig.tight_layout()
+    return fig
 
 
 def multi_countplot(
+    *,
     data: pd.DataFrame,
-    normalize=False,
-    heat="coolwarm",
-    heat_desat=0.6,
-    ncols=3,
-    sp_height=5,
-    orient="h",
-    sort="desc",
+    normalize: bool = False,
+    heat: str = "coolwarm",
+    heat_desat: float = 0.6,
+    ncols: int = 3,
+    height: int = 5,
+    orient: str = "h",
+    sort: str = "desc",
     **kwargs,
 ) -> plt.Figure:
-    nrows, figsize = calc_subplots_size(data.columns.size, ncols, sp_height)
-    fig, axs = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
+    """Plot value counts of every feature in `data`.
+
+    Parameters
+    ----------
+    data : DataFrame
+        Data for plotting.
+    normalize : bool, optional
+        Show fractions instead of counts, by default False.
+    heat : str, optional
+        Color palette for heat, by default "coolwarm".
+    heat_desat : float, optional
+        Saturation of heat color palette, by default 0.6.
+    ncols : int, optional
+        Number of columns for subplots, by default 3.
+    height : int, optional
+        Subplot height, by default 5.
+    orient : str, optional
+        Bar orientation, by default "h".
+    sort : str, optional
+        Direction for sorting bars. Can be 'asc' or 'desc' (default).
+
+    Returns
+    -------
+    Figure
+        Multiple value count plots.
+    """
+    fig, axs = smart_subplots(
+        nplots=data.columns.size,
+        ncols=ncols,
+        size=(height, height),
+    )
     sort = sort.lower()
     format_spec = "{x:.0%}" if normalize else "{x:,.0f}"
     data = data.loc[:, data.nunique().sort_values(ascending=(sort == "asc")).index]
@@ -257,9 +566,9 @@ def multi_countplot(
         col_df.reset_index(inplace=True)
         pal = heat_palette(col_df["Count"], heat, desat=heat_desat)
         ax = simple_barplot(
-            col_df,
-            column,
-            "Count",
+            data=col_df,
+            x=column,
+            y="Count",
             ax=ax,
             orient=orient,
             sort=sort,
@@ -267,7 +576,7 @@ def multi_countplot(
             **kwargs,
         )
         ax.set_title(f"`{column}` Value Counts")
-        annot_bars(ax, orient=orient, format_spec=format_spec)
+        annot_bars(ax=ax, orient=orient, format_spec=format_spec)
         count_axis = ax.xaxis if orient.lower() == "h" else ax.yaxis
         count_axis.set_major_formatter(ticker.StrMethodFormatter(format_spec))
     if axs.ndim > 1:
@@ -280,77 +589,8 @@ def multi_countplot(
     return fig
 
 
-def multi_scatter(
-    data: pd.DataFrame,
-    target: str,
-    ncols=3,
-    sp_height=5,
-    reflexive=False,
-    yformatter=None,
-    **kwargs,
-) -> np.ndarray:
-    data = data.select_dtypes(include="number")
-    target_data = data.loc[:, target]
-    if not reflexive:
-        data.drop(columns=target, inplace=True)
-    nrows, figsize = calc_subplots_size(data.columns.size, ncols, sp_height)
-    fig, axs = plt.subplots(nrows=nrows, ncols=ncols, sharey=True, figsize=figsize)
-    for ax in axs.flat:
-        ax.set_visible(False)
-    for ax, column in zip(axs.flat, data.columns):
-        ax.set_visible(True)
-        ax = sns.scatterplot(x=data[column], y=target_data, ax=ax, **kwargs)
-        ax.set_ylabel(target, labelpad=10)
-        if yformatter:
-            ax.yaxis.set_major_formatter(yformatter)
-        ax.set_title(f"{column} vs. {target}")
-    return axs
-
-
-def linearity_scatters(
-    data: pd.DataFrame, target: str, ncols=3, sp_height=5, yformatter=None, **kwargs
-) -> plt.Figure:
-    data = data.loc[:, utils.numeric_cols(data)]
-    corr_df = data.corrwith(data[target]).round(2)
-    nrows, figsize = calc_subplots_size(data.columns.size, ncols, sp_height)
-    fig, axs = plt.subplots(nrows=nrows, ncols=ncols, sharey=True, figsize=figsize)
-    for ax in axs.flat:
-        ax.set_visible(False)
-    for ax, column in zip(axs.flat, data.columns):
-        ax.set_visible(True)
-        ax = sns.scatterplot(data=data, x=column, y=target, ax=ax, **kwargs)
-        text = f"r={corr_df[column]:.2f}"
-        ax.text(
-            0.975,
-            1.025,
-            text,
-            horizontalalignment="right",
-            verticalalignment="center",
-            transform=ax.transAxes,
-            fontsize=12,
-        )
-        if yformatter:
-            ax.yaxis.set_major_formatter(yformatter)
-        ax.set_title(f"{column} vs. {target}")
-    fig.tight_layout()
-    return fig
-
-
-def multi_joint(
-    data: pd.DataFrame, target: str, reflexive: bool = False, **kwargs
-) -> np.ndarray:
-    data = data.select_dtypes(include="number")
-    grids = []
-    columns = data.columns if reflexive else data.columns.drop(target)
-    for column in columns:
-        g = sns.jointplot(data=data, x=column, y=target, **kwargs)
-        g.fig.suptitle(f"{column} vs. {target}")
-        g.fig.subplots_adjust(top=0.9)
-        grids.append(g)
-    return np.array(grids)
-
-
 def annot_bars(
+    *,
     ax: plt.Axes,
     dist: float = 0.15,
     color: str = "k",
@@ -364,22 +604,31 @@ def annot_bars(
 ) -> plt.Axes:
     """Annotate a bar graph with the bar values.
 
-    Args:
-        ax (plt.Axes): Axes object to annotate.
-        dist (float, optional): Distance from ends as fraction of max bar. Defaults to 0.15.
-        color (str, optional): Text color. Defaults to "k".
-        compact (bool, optional): Annotate inside the bars. Defaults to False.
-        orient (str, optional): Bar orientation. Defaults to "h".
-        format_spec (str, optional): Format string for annotations. Defaults to ".2f".
-        fontsize (int, optional): Font size. Defaults to 12.
-        alpha (float, optional): Opacity of text. Defaults to 0.5.
-        drop_last (int, optional): Number of bars to ignore on tail end. Defaults to 0.
+    Parameters
+    ----------
+    ax : Axes
+        Axes object to annotate.
+    dist : float, optional
+        Distance from ends as fraction of max bar. Defaults to 0.15.
+    color : str, optional
+        Text color. Defaults to "k".
+    compact : bool, optional
+        Annotate inside the bars. Defaults to False.
+    orient : str, optional
+        Bar orientation. Defaults to "h".
+    format_spec : str, optional
+        Format string for annotations. Defaults to ".2f".
+    fontsize : int, optional
+        Font size. Defaults to 12.
+    alpha : float, optional
+        Opacity of text. Defaults to 0.5.
+    drop_last : int, optional
+        Number of bars to ignore on tail end. Defaults to 0.
 
-    Raises:
-        ValueError: `orient` only accepts 'h' or 'v'.
-
-    Returns:
-        plt.Axes: Annotated axes object.
+    Returns
+    -------
+    Axes
+        Annotated axes object.
     """
     if not compact:
         dist = -dist
@@ -425,6 +674,7 @@ def heat_palette(data, palette_name, desat=0.6):
 
 
 def heated_barplot(
+    *,
     data: pd.Series,
     heat: str = "coolwarm",
     heat_desat: float = 0.6,
@@ -460,25 +710,7 @@ def heated_barplot(
     return ax
 
 
-def diagnostics(
-    model,
-    height=5,
-    xformatter=big_number_formatter(2),
-    yformatter=big_number_formatter(2),
-):
-    fig, (qq, hs) = plt.subplots(ncols=2, figsize=(height * 2, height))
-    sm.graphics.qqplot(model.resid, fit=True, line="45", ax=qq)
-    qq.set_title("Normality of Residuals")
-    hs = sns.scatterplot(x=model.predict(), y=model.resid, s=5)
-    hs.set_ylabel("Residuals", labelpad=10)
-    hs.set_xlabel("Predicted Values", labelpad=10)
-    # hs.yaxis.set_major_formatter(yformatter)
-    # hs.xaxis.set_major_formatter(xformatter)
-    for label in hs.get_xticklabels():
-        label.set_rotation(45)
-    hs.set_title("Homoscedasticity Check")
-    fig.tight_layout()
-    return fig
+# def set_labels(axs, x_label=None, y_label=None, title=None, x_pad=None, y_pad=None)
 
 
 def cat_palette(
@@ -503,16 +735,44 @@ def cat_palette(
 
 
 def simple_barplot(
-    data,
-    x,
-    y,
+    *,
+    data: pd.DataFrame,
+    x: str,
+    y: str,
     sort="asc",
     orient="v",
-    estimator=np.mean,
-    figsize=None,
-    ax=None,
+    estimator: Callable = np.mean,
+    figsize: tuple = None,
+    ax: plt.Axes = None,
     **kwargs,
-):
+) -> plt.Axes:
+    """Plot a barplot with sorted bars and switchable orientation.
+
+    Parameters
+    ----------
+    data : DataFrame
+        Data for plotting.
+    x : str
+        Variable for x-axis.
+    y : str
+        Variable for y-axis.
+    sort : str, optional
+        Sort direction, by default "asc".
+    orient : str, optional
+        Bar orientation: 'h' or 'v' (default).
+    estimator : Callable, optional
+        Estimator for calculating bar heights, by default np.mean.
+    figsize : tuple, optional
+        Figure size. Defaults to (8, 5) if not specified.
+    ax : Axes, optional
+        Axes to plot on, by default None.
+
+    Returns
+    -------
+    Axes
+        Barplot.
+    """
+
     if ax is None:
         if figsize is None:
             width, height = (8, 5)
@@ -555,58 +815,8 @@ def simple_barplot(
     return ax
 
 
-def cat_line_and_corr(
-    main_df,
-    exog,
-    endog,
-    sp_height=5,
-    lw=3,
-    ms=10,
-    marker="o",
-    palette=None,
-    annot_kws=None,
-    corr_kws=None,
-    estimator=np.mean,
-):
-    _, figsize = calc_subplots_size(2, 2, sp_height)
-    fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=figsize)
-
-    ax1 = sns.lineplot(
-        data=main_df,
-        x=exog,
-        y=endog,
-        estimator=estimator,
-        palette=palette,
-        lw=lw,
-        ms=ms,
-        marker=marker,
-        ax=ax1,
-    )
-
-    ax1.set_ylabel(endog.title(), labelpad=10)
-    ax1.set_xlabel(exog.title(), labelpad=10)
-    est_name = estimator.__name__.title()
-    ax1.set_title(f"{est_name} {endog.title()} by {exog.title()}", pad=10)
-
-    if not corr_kws:
-        corr_kws = dict()
-    ax2 = heated_barplot(
-        pd.get_dummies(main_df[exog]).corrwith(main_df[endog]),
-        ax=ax2,
-        **corr_kws,
-    )
-    default_annot_kws = {"color": "k", "dist": 0.2, "fontsize": 11}
-    if annot_kws:
-        default_annot_kws.update(annot_kws)
-    ax2 = annot_bars(ax2, **default_annot_kws)
-    ax2.set_title(f"Correlation: {exog.title()} and {endog.title()}")
-    ax2.set_xlabel("Correlation", labelpad=10)
-    ax2.set_ylabel(exog.title(), labelpad=10)
-    fig.tight_layout()
-    return fig
-
-
 def cat_corr_heatmap(
+    *,
     data: pd.DataFrame,
     categorical: str,
     transpose: bool = False,
@@ -619,15 +829,15 @@ def cat_corr_heatmap(
     """Plot a correlation heatmap of categorical vs. numeric features.
 
     Args:
-        data (pd.DataFrame): Frame containing categorical and numeric data.
+        data (DataFrame): Frame containing categorical and numeric data.
         categorical (str): Name or list of names of categorical features.
         high_corr (float): Threshold for high correlation. Defaults to None.
         scale (float, optional): Multiplier for determining figsize. Defaults to 0.5.
         no_prefix (bool, optional): If only one cat, do not prefix dummies. Defaults to True.
-        ax (plt.Axes, optional): Axes to plot on. Defaults to None.
+        ax (Axes, optional): Axes to plot on. Defaults to None.
 
     Returns:
-        plt.Axes: Axes of the plot.
+        Axes: Axes of the plot.
     """
     if isinstance(categorical, str):
         ylabel = utils.to_title(categorical)
@@ -663,36 +873,3 @@ def cat_corr_heatmap(
     ax.set_ylabel(ylabel, labelpad=10)
     ax.set_title(title, pad=10)
     return ax
-
-
-# @wraps(sns.barplot)
-# def barplot(
-#     x=None,
-#     y=None,
-#     hue=None,
-#     data=None,
-#     sort="asc"
-#     order=None,
-#     hue_order=None,
-#     estimator=np.mean,
-#     ci=95,
-#     n_boot=1000,
-#     units=None,
-#     seed=None,
-#     orient=None,
-#     color=None,
-#     palette=None,
-#     saturation=0.75,
-#     errcolor=".26",
-#     errwidth=None,
-#     capsize=None,
-#     dodge=True,
-#     ax=None,
-#     **kwargs,
-# ):
-#     if order is None:
-#         order = data.groupby(x)[y].agg(estimator).sort_values().index[::-1]
-#     params = locals()
-#     params.update(kwargs)
-#     del params["kwargs"]
-#     return sns.barplot(**params)

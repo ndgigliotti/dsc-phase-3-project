@@ -5,7 +5,22 @@ from sklearn.base import clone
 from .. import utils
 
 
-def tidy_results(cv_results: dict):
+def tidy_results(cv_results: dict) -> pd.DataFrame:
+    """Clean up messy grid search results and return DataFrame.
+
+    Converts `cv_results` to DataFrame and removes the numerous
+    "splitX_" columns which make the table hard to read.
+
+    Parameters
+    ----------
+    cv_results : dict
+        Dict of results from GridSearchCV or RandomizedSearchCV.
+
+    Returns
+    -------
+    DataFrame
+        Cleaned up results.
+    """
     cv_results = pd.DataFrame(cv_results)
     splits = cv_results.filter(regex=r"split[0-9]+_").columns
     cv_results.drop(columns=splits, inplace=True)

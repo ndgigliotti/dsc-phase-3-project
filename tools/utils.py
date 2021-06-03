@@ -119,6 +119,7 @@ def binary_cols(data: pd.DataFrame) -> list:
     """
     return data.columns[data.nunique() == 2].to_list()
 
+
 def get_defaults(callable: Callable) -> dict:
     """Returns dict of parameters with their default values, if any.
 
@@ -143,45 +144,62 @@ def get_defaults(callable: Callable) -> dict:
     defaults = params.map(lambda x: x.default)
     return defaults.to_dict()
 
-# def transform(data: pd.DataFrame, pipe: list):
-#     tr = data.to_numpy()
-#     for func in pipe:
-#         tr = func(tr)
-#     display([x.__name__ for x in pipe])
-#     return pd.DataFrame(tr, index=data.index, columns=data.columns)
+
+def pandas_heatmap(
+    frame: pd.DataFrame,
+    na_rep="",
+    precision=3,
+    cmap="vlag",
+    low=0,
+    high=0,
+    vmin=None,
+    vmax=None,
+    axis=None,
+):
+    table = frame.style.background_gradient(
+        cmap=cmap, low=low, high=high, vmin=vmin, vmax=vmax, axis=axis
+    )
+    table.set_na_rep(na_rep)
+    table.set_precision(precision)
+    table.highlight_null("white")
+    return table
 
 
-# def filter_pipe(
-#     data: pd.DataFrame, like: list = None, regex: list = None, axis: int = None
-# ) -> pd.DataFrame:
-#     if like and regex:
-#         raise ValueError("Cannot pass both `like` and `regex`")
-#     elif like:
-#         if isinstance(like, str):
-#             like = [like]
-#         for exp in like:
-#             data = data.filter(like=exp, axis=axis)
-#     elif regex:
-#         if isinstance(regex, str):
-#             regex = [regex]
-#         for exp in like:
-#             data = data.filter(regex=exp, axis=axis)
-#     else:
-#         raise ValueError("Must pass either `like` or `regex` but not both")
-#     return data
+def filter_pipe(
+    data: pd.DataFrame, like: list = None, regex: list = None, axis: int = None
+) -> pd.DataFrame:
+    if like and regex:
+        raise ValueError("Cannot pass both `like` and `regex`")
+    elif like:
+        if isinstance(like, str):
+            like = [like]
+        for exp in like:
+            data = data.filter(like=exp, axis=axis)
+    elif regex:
+        if isinstance(regex, str):
+            regex = [regex]
+        for exp in like:
+            data = data.filter(regex=exp, axis=axis)
+    else:
+        raise ValueError("Must pass either `like` or `regex` but not both")
+    return data
 
 
-def get_groups(groupby: pd.core.groupby.DataFrameGroupBy):
-    return {x: groupby.get_group(x) for x in groupby.groups}
+def to_title(snake_case: str):
+    """Format snake case string as title."""
+    return snake_case.replace("_", " ").strip().title()
 
-
-def elapsed(start_time):
-    return datetime.timedelta(seconds=perf_counter() - start_time)
-
-
-def to_title(pylabel):
-    return pylabel.replace("_", " ").strip().title()
-
+def title_mode(data: pd.DataFrame):
+    """Return copy of `data` with strings formatted as titles."""
+    result = data.copy()
+    result.update(result.select_dtypes("object").applymap(to_title))
+    for label, column in result.select_dtypes("category").items():
+        result[label] = column.cat.rename_categories(to_title)
+    if result.columns.dtype == "object":
+        result.columns = result.columns.map(to_title)
+    if result.index.dtype == "object":
+        result.index = result.index.map(to_title)
+    return result
 
 def cartesian(*xi):
     return np.array(np.meshgrid(*xi)).T.reshape(-1, len(xi))
@@ -190,60 +208,6 @@ def cartesian(*xi):
 def broad_corr(frame: pd.DataFrame, other: pd.DataFrame):
     return other.apply(lambda x: frame.corrwith(x))
 
+
 def swap_index(data: pd.Series):
     return pd.Series(data.index, index=data.values, name=data.name, copy=True)
-
-
-
-# def map_list_likes(data: pd.Series, mapper: dict):
-#     """Apply `mapper` to elements of elements of `data`.
-
-#     Args:
-#         data (pd.Series): Series containing only list-like elements.
-#         mapper (dict): Dict-like or callable to apply to elements of elements of `data`.
-#     """
-
-#     def transform(list_):
-#         if isinstance(mapper, Mapping):
-#             return [mapper[x] if x not in NULL else x for x in list_]
-#         else:
-#             return [mapper(x) if x not in NULL else x for x in list_]
-
-#     return data.map(transform, na_action="ignore")
-
-
-# def datetime_from_name(name):
-#     name = os.path.basename(name)
-#     root, _ = os.path.splitext(name)
-#     fmt = DATETIME_FORMAT if root.count("-") == 4 else DATE_FORMAT
-#     return datetime.datetime.strptime(root, fmt)
-
-
-# def datetime_to_name(when, ext=None):
-#     if isinstance(when, datetime.datetime):
-#         name = when.isoformat(timespec="seconds").replace(":", "-")
-#     elif isinstance(when, datetime.date):
-#         name = when.isoformat()
-#     else:
-#         raise ValueError("'when' must be datetime.datetime or datetime.date")
-#     if ext:
-#         if not ext.startswith("."):
-#             ext = "." + ext
-#         name += ext
-#     return name
-
-
-# def date_from_name(name):
-#     return datetime_from_name(name).date()
-
-
-# def date_to_name(when, ext=None):
-#     return datetime_to_name(when, ext=ext)
-
-
-# def now_name(ext=None):
-#     return datetime_to_name(datetime.datetime.now(), ext=ext)
-
-
-# def today_name(ext=None):
-#     return date_to_name(datetime.date.today(), ext=ext)
