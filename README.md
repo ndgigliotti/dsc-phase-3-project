@@ -47,14 +47,16 @@ Note that I have renamed some of the features from the original dataset to make 
 14. 'days_since_prev' - number of days since last contacted during previous campaign
 15. 'prev_contact_count' - total number of contacts before this campaign
 16. 'prev_outcome' - sales result of previous campaign
+17. 'prev_failure' - previous campaign failed to result in a sa
+18. 'prev_success' - previous campaign resulted in a sale
 
 #### Economic Context
 
-17. 'emp_var_rate' - employment variation rate (quarterly indicator)
-18. 'cons_price_idx' - consumer price index (monthly indicator)
-19. 'cons_conf_idx' - consumer confidence index (monthly indicator)
-20. 'euribor_3m' - euribor 3 month rate (daily indicator)
-21. 'n_employed' - thousands of people employed (quarterly indicator)
+19. 'emp_var_rate' - employment variation rate (quarterly indicator)
+20. 'cons_price_idx' - consumer price index (monthly indicator)
+21. 'cons_conf_idx' - consumer confidence index (monthly indicator)
+22. 'euribor_3m' - euribor 3 month rate (daily indicator)
+23. 'n_employed' - thousands of people employed (quarterly indicator)
 
 # Methods
 
