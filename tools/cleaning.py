@@ -76,34 +76,61 @@ def who_is_nan(
     return data.loc[nan_mask].index.to_numpy()
 
 
-def token_info(data: pd.DataFrame, normalize: bool = False) -> pd.DataFrame:
-    """Get info about min tokens, max tokens, and number of types.
+# def token_info(data: pd.DataFrame, normalize: bool = False) -> pd.DataFrame:
+#     """Get info about min tokens, max tokens, and number of types.
 
-    Categorical features often have a small number of unique value-types
-    and a larger number of tokens (instances) of those types. Sometimes
-    the distribution of types is imbalanced, meaning that some have many
-    more tokens than others. This function returns the minimum token
-    count, maximum token count, and number of types to indicate the balance.
+#     Categorical features often have a small number of unique value-types
+#     and a larger number of tokens (instances) of those types. Sometimes
+#     the distribution of types is imbalanced, meaning that some have many
+#     more tokens than others. This function returns the minimum token
+#     count, maximum token count, and number of types to indicate the balance.
+
+#     Parameters
+#     ----------
+#     data : DataFrame
+#         DataFrame for getting token and type counts.
+#     normalize : bool, optional
+#         Return relative token frequencies instead of counts, by default False.
+
+#     Returns
+#     -------
+#     DataFrame
+#         Token and type information.
+#     """
+#     funcs = ["min", "max", "count"]
+#     df = data.apply(lambda x: x.value_counts(normalize).agg(funcs))
+#     df.rename(
+#         {"count": "types", "min": "min_tokens", "max": "max_tokens"}, inplace=True
+#     )
+#     return df.T.sort_values("min_tokens")
+
+def class_distrib(data: pd.DataFrame, normalize: bool = False) -> pd.DataFrame:
+    """Get class membership counts for the smallest and largest classes.
+
+    Sometimes the class distribution of a categorical variable is imbalanced,
+    meaning that some classes have many more members than others. This function
+    returns the minimum member count (members of the smallest class), maximum
+    member count (members of the largest class), and number of classes to
+    indicate the balance.
 
     Parameters
     ----------
     data : DataFrame
-        DataFrame for getting token and type counts.
+        DataFrame for getting class membership counts.
     normalize : bool, optional
-        Return relative token frequencies instead of counts, by default False.
+        Return relative membership fractions instead of counts, by default False.
 
     Returns
     -------
     DataFrame
-        Token and type information.
+        Class membership information.
     """
     funcs = ["min", "max", "count"]
     df = data.apply(lambda x: x.value_counts(normalize).agg(funcs))
     df.rename(
-        {"count": "types", "min": "min_tokens", "max": "max_tokens"}, inplace=True
+        {"count": "classes", "min": "min_members", "max": "max_members"}, inplace=True
     )
-    return df.T.sort_values("min_tokens")
-
+    return df.T.sort_values("min_members")
 
 def info(data: pd.DataFrame, round_pct: int = 2) -> pd.DataFrame:
     """Get counts of NaNs, uniques, and duplicate observations.
