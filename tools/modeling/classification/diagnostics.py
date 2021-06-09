@@ -1,4 +1,5 @@
-from typing import Union
+from functools import partial
+from typing import Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -8,11 +9,15 @@ from pandas.io.formats.style import Styler
 from sklearn.base import BaseEstimator
 from sklearn.metrics import average_precision_score, balanced_accuracy_score
 from sklearn.metrics import classification_report as sk_report
-from sklearn.metrics import (plot_confusion_matrix,
-                             plot_precision_recall_curve, plot_roc_curve,
-                             roc_auc_score)
+from sklearn.metrics import (
+    plot_confusion_matrix,
+    plot_precision_recall_curve,
+    plot_roc_curve,
+    roc_auc_score,
+)
 from sklearn.pipeline import Pipeline
 
+from ...plotting import smart_subplots
 from ...utils import pandas_heatmap
 
 
@@ -105,7 +110,11 @@ def classification_report(
         mask
     )
 
-    return pandas_heatmap(report, subset=["0.0", "1.0"], axis=1, vmin=0, vmax=1) if heatmap else report
+    return (
+        pandas_heatmap(report, subset=["0.0", "1.0"], axis=1, vmin=0, vmax=1)
+        if heatmap
+        else report
+    )
 
 
 def compare_scores(estimator_1, estimator_2, X_test, y_test, prec=3, heatmap=True):
@@ -124,32 +133,42 @@ def compare_scores(estimator_1, estimator_2, X_test, y_test, prec=3, heatmap=Tru
 
 
 def classification_plots(
-    estimator: BaseEstimator,
+    estimator: Union[BaseEstimator, Pipeline],
     X_test: Union[pd.DataFrame, np.ndarray],
     y_test: Union[pd.Series, np.ndarray],
     average: str = "weighted",
+    size: Tuple[float, float] = (5, 5),
 ) -> plt.Figure:
     """Plot confusion matrix, ROC curve, and precision-recall curve.
 
     Parameters
     ----------
-    estimator : BaseEstimator
-        Fitted classification estimator to evaluate.
+    estimator : BaseEstimator or Pipeline
+        Fitted classification estimator or pipeline with fitted
+        final estimator to evaluate.
     X_test : DataFrame or ndarray of shape (n_samples, n_features)
         Predictor test set.
     y_test : Series or ndarray of shape (n_samples,)
         target test set.
     average : str, optional
         Method of averaging: 'micro', 'macro', 'weighted' (default), 'samples'.
+    size: tuple (float, float), optional
+        Size of each subplot.
 
     Returns
     -------
     Figure
         Figure containing three subplots.
     """
-    fig, (ax1, ax2, ax3) = plt.subplots(ncols=3, figsize=(15, 5))
+    fig, (ax1, ax2, ax3) = smart_subplots(nplots=3, ncols=3, size=size)
     plot_confusion_matrix(
-        estimator, X_test, y_test, cmap="Blues", normalize="true", ax=ax1
+        estimator,
+        X_test,
+        y_test,
+        cmap="Blues",
+        normalize="true",
+        colorbar=False,
+        ax=ax1,
     )
     plot_roc_curve(estimator, X_test, y_test, ax=ax2)
     plot_precision_recall_curve(estimator, X_test, y_test, ax=ax3)
@@ -166,10 +185,73 @@ def classification_plots(
     auc_score = roc_auc_score(y_test, y_score, average=average).round(2)
     ap_score = average_precision_score(y_test, y_score, average=average).round(2)
 
+    ax1.set_title("Normalized Confusion Matrix")
     ax2.set_title(f"Receiver Operating Characteristic Curve: AUC = {auc_score}")
     ax3.set_title(f"Precision-Recall Curve: AP = {ap_score}")
     ax2.get_legend().set_visible(False)
     ax3.get_legend().set_visible(False)
+    fig.tight_layout()
+    return fig
+
+
+def plot_double_confusion_matrices(
+    estimator: Union[BaseEstimator, Pipeline],
+    X_test: Union[pd.DataFrame, np.ndarray],
+    y_test: Union[pd.Series, np.ndarray],
+    cmap: str = "Blues",
+    colorbar: bool = False,
+    size: Tuple[float, float] = (6, 6),
+    **kwargs,
+) -> plt.Figure:
+    """Plot normalized and raw confusion matrices side by side.
+
+    Parameters
+    ----------
+    estimator : BaseEstimator or Pipeline
+        Fitted classification estimator or pipeline with fitted
+        final estimator to evaluate.
+    X_test : DataFrame or ndarray of shape (n_samples, n_features)
+        Predictor test set.
+    y_test : Series or ndarray of shape (n_samples,)
+        target test set.
+    cmap : str, optional
+        Matplotlib colormap for the matrices, by default "Blues".
+    colorbar : bool, optional
+        Show colorbars, by default False.
+    size: tuple (float, float), optional
+        Size of each subplot.
+    **kwargs:
+        Keyword arguments passed to `sklearn.metrics.plot_confusion_matrix`
+        for both plots.
+
+    Returns
+    -------
+    Figure
+        Two confusion matrices.
+    """
+    fig, (ax1, ax2) = smart_subplots(nplots=2, size=size, ncols=2, sharey=True)
+
+    # Generic partial function for both plots
+    plot_matrix = partial(
+        plot_confusion_matrix,
+        estimator=estimator,
+        X=X_test,
+        y_true=y_test,
+        cmap=cmap,
+        colorbar=colorbar,
+        **kwargs,
+    )
+
+    # Plot normalized matrix
+    plot_matrix(ax=ax1, normalize="true")
+
+    # Plot raw matrix
+    plot_matrix(ax=ax2)
+
+    # Set titles
+    ax1.set(title="Normalized Confusion Matrix")
+    ax2.set(title="Raw Confusion Matrix")
+
     fig.tight_layout()
     return fig
 
