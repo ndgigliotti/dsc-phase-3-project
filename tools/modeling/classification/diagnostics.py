@@ -153,7 +153,7 @@ def classification_plots(
     average : str, optional
         Method of averaging: 'micro', 'macro', 'weighted' (default), 'samples'.
     size: tuple (float, float), optional
-        Size of each subplot.
+        Size of each subplot; (5, 5) by default.
 
     Returns
     -------
@@ -200,7 +200,7 @@ def plot_double_confusion_matrices(
     y_test: Union[pd.Series, np.ndarray],
     cmap: str = "Blues",
     colorbar: bool = False,
-    size: Tuple[float, float] = (6, 6),
+    size: Tuple[float, float] = (5, 5),
     **kwargs,
 ) -> plt.Figure:
     """Plot normalized and raw confusion matrices side by side.
@@ -219,7 +219,7 @@ def plot_double_confusion_matrices(
     colorbar : bool, optional
         Show colorbars, by default False.
     size: tuple (float, float), optional
-        Size of each subplot.
+        Size of each subplot; (5, 5) by default.
     **kwargs:
         Keyword arguments passed to `sklearn.metrics.plot_confusion_matrix`
         for both plots.
