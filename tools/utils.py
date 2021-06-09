@@ -144,6 +144,7 @@ def get_defaults(callable: Callable) -> dict:
 
 def pandas_heatmap(
     frame: pd.DataFrame,
+    subset=None,
     na_rep="",
     precision=3,
     cmap="vlag",
@@ -155,11 +156,11 @@ def pandas_heatmap(
 ):
     """Style DataFrame as a heatmap."""
     table = frame.style.background_gradient(
-        cmap=cmap, low=low, high=high, vmin=vmin, vmax=vmax, axis=axis
+        subset=subset, cmap=cmap, low=low, high=high, vmin=vmin, vmax=vmax, axis=axis
     )
     table.set_na_rep(na_rep)
     table.set_precision(precision)
-    table.highlight_null("white")
+    # table.highlight_null("white")
     return table
 
 
