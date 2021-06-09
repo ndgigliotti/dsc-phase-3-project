@@ -105,7 +105,7 @@ def classification_report(
         mask
     )
 
-    return pandas_heatmap(report, vmin=0, vmax=1) if heatmap else report
+    return pandas_heatmap(report, subset=["0.0", "1.0"], axis=1, vmin=0, vmax=1) if heatmap else report
 
 
 def compare_scores(estimator_1, estimator_2, X_test, y_test, prec=3, heatmap=True):
