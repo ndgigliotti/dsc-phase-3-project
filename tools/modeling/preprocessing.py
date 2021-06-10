@@ -1,22 +1,12 @@
+from functools import partial, singledispatchmethod
+
 import numpy as np
 import pandas as pd
-from typing import Callable
-from functools import partial, singledispatchmethod
-from scipy.spatial import distance
 from scipy.stats.mstats import winsorize
-from sklearn.base import BaseEstimator, TransformerMixin, clone
-from sklearn.preprocessing import (
-    minmax_scale,
-    scale,
-    OneHotEncoder,
-    FunctionTransformer,
-)
-from sklearn import impute
-from sklearn.pipeline import Pipeline, make_pipeline
-from sklearn.model_selection import ParameterGrid
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.preprocessing import FunctionTransformer
 from sklearn.utils import as_float_array
 from sklearn.utils.validation import check_is_fitted
-from .. import outliers
 
 # The following partial objects are shorthand callables
 # for constructing commonly used estimators.
@@ -31,7 +21,7 @@ log10_transformer = partial(
     FunctionTransformer,
     func=np.log10,
     inverse_func=partial(np.power, 10),
-)
+) 
 
 
 class QuantileWinsorizer(BaseEstimator, TransformerMixin):
